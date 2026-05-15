@@ -20,19 +20,20 @@ jobs:
 
       - name: Run prediction model
         env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }} # Ensure this matches your Aiven secret name
           EXPORT_URL: ${{ secrets.EXPORT_URL }}
           DEPARTMENTS_URL: ${{ secrets.DEPARTMENTS_URL }}
         run: python working_model.py
 
-      - name: Emergency File Creation
-        # If Python failed to make the file, this creates a "System Offline" version
+      - name: Verify Python Output
         run: |
-          mkdir -p outputs
-          if [ ! -f outputs/finaloccupancy.json ]; then
-            echo '{"hospital_shortage_risk":"OFFLINE","sync_time":"System Error","mae":0,"breakdown":[]}' > outputs/finaloccupancy.json
-            echo "⚠️ Python failed to create file. Created emergency fallback JSON."
+          if [ -f "finaloccupancy.json" ]; then
+            mkdir -p outputs
+            mv finaloccupancy.json outputs/
+            mv *.png outputs/ 2>/dev/null || true
+            echo "✅ Data generated and moved to outputs folder."
           else
-            echo "✅ Python file detected."
+            echo "⚠️ Python script did not generate the file."
           fi
 
       - name: Upload forecast files
