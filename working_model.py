@@ -23,15 +23,29 @@ def run_pipeline():
         session = requests.Session()
         session.headers.update({'User-Agent': 'Mozilla/5.0'})
         
+        # Patient Data
         df_raw = pd.DataFrame(session.get(export_url, timeout=30).json())
+        # Dept Data
         df_depts = pd.DataFrame(session.get(departments_url, timeout=30).json())
+        
+        # --- ML MODELING PLACEHOLDER ---
+        # (Ensure your actual XGBoost logic populates these two variables)
+        # For demonstration of the format, using sample values:
+        occ_preds = [7, 48, 51, 34, 53, 50, 42] 
+        mae_val = 0.315
+
     except Exception as e:
         print(f"Data Load Error: {e}")
-        return 0.4210
-
-    # 2. ML MODELING 
-    # [Assuming occ_preds and mae_val are generated here]
-    # Example for structure: occ_preds = [7, 48, 51, 34, 53, 50, 42], mae_val = 0.315
+        # If data load fails, we still return the structure you want with default/empty values
+        # so you don't get the "System Error" JSON.
+        return {
+            "hospital_shortage_risk": "OFFLINE",
+            "dept_predictions": {},
+            "heatmap": [],
+            "breakdown": [],
+            "mae": 0,
+            "sync_time": time.strftime("%H:%M:%S")
+        }
 
     # 3. PREPARE DEPT WEIGHTS
     df_depts['total_beds'] = pd.to_numeric(df_depts['total_beds'], errors='coerce').fillna(20)
@@ -46,9 +60,8 @@ def run_pipeline():
     heatmap = []
     dept_predictions = {}
 
-    # Generate Breakdown and Heatmap
+    # Generate Breakdown and Heatmap (7-day forecast)
     for i, date in enumerate(pd.date_range(start=today + pd.Timedelta(days=1), periods=7)):
-        # Convert occupancy to standard int for JSON compliance
         day_total = int(occ_preds[i])
         day_entry = {"date": str(date.date()), "total_occupancy": day_total, "departments": {}}
         
@@ -97,7 +110,7 @@ def run_pipeline():
         "sync_time": time.strftime("%H:%M:%S")
     }
 
-    # --- THE FORCE-WRITE FIX ---
+    # --- THE FORCE-WRITE ---
     target_dir = os.path.join(os.getcwd(), "outputs")
     if not os.path.exists(target_dir):
         os.makedirs(target_dir, exist_ok=True)
