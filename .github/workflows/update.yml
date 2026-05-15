@@ -32,7 +32,7 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftp
           port: 21
-          # CHANGE THIS: Only upload the CONTENTS of the outputs folder
+          # Look inside the folder created by the script
           local-dir: ./outputs/
-          # CHANGE THIS: Path to the outputs folder on your server
+          # Destination on InfinityFree
           server-dir: htdocs/outputs/
