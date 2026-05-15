@@ -32,5 +32,7 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftp
           port: 21
+          # CHANGE THIS: Only upload the CONTENTS of the outputs folder
           local-dir: ./outputs/
-          server-dir: ${{ secrets.FTP_REMOTE_DIR }}outputs/
+          # CHANGE THIS: Path to the outputs folder on your server
+          server-dir: htdocs/outputs/
