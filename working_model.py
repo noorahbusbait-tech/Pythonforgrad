@@ -91,12 +91,19 @@ def run_pipeline():
         "sync_time": time.strftime("%H:%M:%S")
     }
 
-    # 6. WRITE TO FILE
-    target_file = os.path.join(output_dir, "finaloccupancy.json")
+# --- THE FORCE-WRITE FIX ---
+    # We define the path relative to the script's current location
+    target_dir = os.path.join(os.getcwd(), "outputs")
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir, exist_ok=True)
+    
+    target_file = os.path.join(target_dir, "finaloccupancy.json")
+    
     with open(target_file, "w", encoding="utf-8") as f:
         json.dump(final_json, f, indent=4)
-
-    print(f"FILE_CREATED_AT: {target_file}")
+    
+    # CRITICAL: This confirms to the GitHub Log exactly where it went
+    print(f"FILE_CREATED_AT: {target_file}") 
     return mae_val
 
 if __name__ == "__main__":
