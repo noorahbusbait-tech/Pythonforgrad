@@ -5,6 +5,7 @@ import time
 import numpy as np
 import pandas as pd
 import requests
+import cloudscraper  # <-- 1. Import the anti-bot bypass library
 
 # --- CONFIGURATION ---
 base_path = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
@@ -42,9 +43,15 @@ def safe_get_json(session, url):
 
 
 def run_pipeline():
-
-    session = requests.Session()
-    session.headers.update({'User-Agent': 'Mozilla/5.0'})
+    # 2. Replace standard requests.Session() with a cloudscraper instance
+    # This automatically emulates a browser and executes the challenge JS
+    session = cloudscraper.create_scraper(
+        browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'desktop': True
+        }
+    )
 
     # =========================
     # 1. LOAD DATABASE (FORECASTING INPUT)
@@ -54,12 +61,6 @@ def run_pipeline():
 
     raw_data = safe_get_json(session, export_url)
     dept_data = safe_get_json(session, departments_url)
-
-    if raw_data is None or dept_data is None:
-        raise ValueError("Database API failed — cannot continue forecasting. Check your GitHub Secrets/Environment Variables!")
-
-    df_raw = pd.DataFrame(raw_data)
-    df_depts = pd.DataFrame(dept_data)
 
     # =========================
     # 2. TRAIN MODEL (cleandata.csv ONLY)
