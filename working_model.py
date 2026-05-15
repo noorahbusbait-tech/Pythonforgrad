@@ -14,17 +14,27 @@ csv_path = os.path.join(base_path, "cleandata.csv")
 os.makedirs(output_dir, exist_ok=True)
 
 
-# ---------- SAFE JSON LOADER (FIX FOR YOUR ERROR) ----------
+# ---------- SAFE JSON LOADER (DIAGNOSTIC UPGRADE) ----------
 def safe_get_json(session, url):
+    if not url:
+        print("⚠️ API LOAD FAILED: URL environment variable is completely empty or missing.")
+        return None
+        
     try:
         r = session.get(url, timeout=30)
         r.raise_for_status()
 
-        # prevent empty response crash
+        # Check if the response is empty
         if not r.text.strip():
             raise ValueError("Empty response from API")
 
-        return r.json()
+        # Try to parse as JSON. If this fails, catch it and inspect the raw text.
+        try:
+            return r.json()
+        except json.JSONDecodeError:
+            print(f"⚠️ API SENT NON-JSON DATA from URL: {url}")
+            print(f"👉 RAW RESPONSE PREVIEW (First 200 chars): {r.text[:200]}")
+            return None
 
     except Exception as e:
         print(f"⚠️ API LOAD FAILED: {url}\nReason: {e}")
@@ -46,7 +56,7 @@ def run_pipeline():
     dept_data = safe_get_json(session, departments_url)
 
     if raw_data is None or dept_data is None:
-        raise ValueError("Database API failed — cannot continue forecasting")
+        raise ValueError("Database API failed — cannot continue forecasting. Check your GitHub Secrets/Environment Variables!")
 
     df_raw = pd.DataFrame(raw_data)
     df_depts = pd.DataFrame(dept_data)
