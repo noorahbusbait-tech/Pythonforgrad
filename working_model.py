@@ -4,8 +4,6 @@ import json
 import time
 import numpy as np
 import pandas as pd
-import xgboost as xgb
-from sklearn.metrics import mean_absolute_error
 import requests
 
 # --- CONFIGURATION ---
@@ -17,6 +15,10 @@ if not os.path.exists(output_dir):
 
 def run_pipeline():
     # 1. LOAD DATA 
+    # Initialize variables as empty to avoid 'referenced before assignment' errors
+    df_raw = pd.DataFrame()
+    df_depts = pd.DataFrame()
+    
     try:
         export_url = os.environ.get("EXPORT_URL")
         departments_url = os.environ.get("DEPARTMENTS_URL")
@@ -24,30 +26,28 @@ def run_pipeline():
         session.headers.update({'User-Agent': 'Mozilla/5.0'})
         
         # Patient Data
-        df_raw = pd.DataFrame(session.get(export_url, timeout=30).json())
-        # Dept Data
-        df_depts = pd.DataFrame(session.get(departments_url, timeout=30).json())
+        raw_resp = session.get(export_url, timeout=30)
+        df_raw = pd.DataFrame(raw_resp.json())
         
-        # --- ML MODELING PLACEHOLDER ---
-        # (Ensure your actual XGBoost logic populates these two variables)
-        # For demonstration of the format, using sample values:
-        occ_preds = [7, 48, 51, 34, 53, 50, 42] 
-        mae_val = 0.315
-
+        # Dept Data
+        dept_resp = session.get(departments_url, timeout=30)
+        df_depts = pd.DataFrame(dept_resp.json())
     except Exception as e:
         print(f"Data Load Error: {e}")
-        # If data load fails, we still return the structure you want with default/empty values
-        # so you don't get the "System Error" JSON.
-        return {
-            "hospital_shortage_risk": "OFFLINE",
-            "dept_predictions": {},
-            "heatmap": [],
-            "breakdown": [],
-            "mae": 0,
-            "sync_time": time.strftime("%H:%M:%S")
-        }
+        # We don't return here anymore so the script can try to process 
+        # whatever it has or show where it specifically breaks.
+
+    # 2. ML MODELING (Placeholder for your XGBoost logic)
+    # Ensure occ_preds (list of 7 ints) and mae_val (float) are defined by your model
+    # For logic flow, we assume they are created here:
+    # occ_preds = [...]
+    # mae_val = ...
 
     # 3. PREPARE DEPT WEIGHTS
+    if df_depts.empty:
+        print("Error: df_depts is empty. Check API/URL.")
+        return 0
+        
     df_depts['total_beds'] = pd.to_numeric(df_depts['total_beds'], errors='coerce').fillna(20)
     df_depts['current_occupancy'] = pd.to_numeric(df_depts['current_occupancy'], errors='coerce').fillna(5)
     total_now = df_depts['current_occupancy'].sum()
@@ -60,20 +60,20 @@ def run_pipeline():
     heatmap = []
     dept_predictions = {}
 
-    # Generate Breakdown and Heatmap (7-day forecast)
+    # Forecast Loop (7 Days)
     for i, date in enumerate(pd.date_range(start=today + pd.Timedelta(days=1), periods=7)):
         day_total = int(occ_preds[i])
         day_entry = {"date": str(date.date()), "total_occupancy": day_total, "departments": {}}
         
         for d_name, info in dept_map.items():
             val = round(occ_preds[i] * info['weight'], 1)
-            pct = (val / info['total_beds']) if info['total_beds'] > 0 else 0
-            risk = "HIGH" if pct > 0.8 else "MEDIUM" if pct > 0.5 else "LOW"
+            pct_val = (val / info['total_beds']) if info['total_beds'] > 0 else 0
+            risk = "HIGH" if pct_val > 0.8 else "MEDIUM" if pct_val > 0.5 else "LOW"
             
             day_entry["departments"][d_name] = {
                 "beds": f"{val} Beds", 
                 "risk": risk, 
-                "pct": f"{round(pct*100, 1)}%"
+                "pct": f"{round(pct_val*100, 1)}%"
             }
             heatmap.append({
                 "day": date.strftime('%a'), 
@@ -83,7 +83,7 @@ def run_pipeline():
             })
         breakdown.append(day_entry)
 
-    # Generate the dept_predictions summary
+    # Top-Level Dept Summary
     for d_name, info in dept_map.items():
         ratio = info['weight']
         cap = info['total_beds']
@@ -99,10 +99,8 @@ def run_pipeline():
         }
 
     # 5. ASSEMBLE FINAL JSON
-    hospital_shortage_risk = "HIGH" if max(occ_preds) > 75 else "LOW"
-
     final_json = {
-        "hospital_shortage_risk": hospital_shortage_risk,
+        "hospital_shortage_risk": "HIGH" if max(occ_preds) > 75 else "LOW",
         "dept_predictions": dept_predictions,
         "heatmap": heatmap,
         "breakdown": breakdown,
@@ -110,13 +108,8 @@ def run_pipeline():
         "sync_time": time.strftime("%H:%M:%S")
     }
 
-    # --- THE FORCE-WRITE ---
-    target_dir = os.path.join(os.getcwd(), "outputs")
-    if not os.path.exists(target_dir):
-        os.makedirs(target_dir, exist_ok=True)
-    
-    target_file = os.path.join(target_dir, "finaloccupancy.json")
-    
+    # 6. WRITE FILE
+    target_file = os.path.join(output_dir, "finaloccupancy.json")
     with open(target_file, "w", encoding="utf-8") as f:
         json.dump(final_json, f, indent=4)
     
