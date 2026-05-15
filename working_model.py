@@ -92,36 +92,33 @@ def run_pipeline():
             "occupancy_pct": f"{round(occ_pct * 100, 1)}%"
         }
 
-# 5. ASSEMBLE FINAL JSON
-# Keep the exact same structure as the old pipeline so the frontend works unchanged.
-try:
-    final_json = {
-        "hospital_shortage_risk": "HIGH" if max(occ_preds) > 75 else "LOW",
-        "dept_predictions": dept_predictions,
-        "heatmap": heatmap,
-        "breakdown": breakdown,
-        "mae": mae_val,
-        "sync_time": time.strftime("%H:%M:%S")
-    }
-except Exception as e:
-    # Fallback structure that still matches the old schema
-    print(f"JSON Assembly Error: {e}")
-    final_json = {
-        "hospital_shortage_risk": "OFFLINE",
-        "dept_predictions": {},
-        "heatmap": [],
-        "breakdown": [],
-        "mae": 0,
-        "sync_time": "System Error"
-    }
+    # 5. ASSEMBLE FINAL JSON
+    # Keep the exact same structure as the old pipeline so the frontend works unchanged.
+    try:
+        final_json = {
+            "hospital_shortage_risk": "HIGH" if max(occ_preds) > 75 else "LOW",
+            "dept_predictions": dept_predictions,
+            "heatmap": heatmap,
+            "breakdown": breakdown,
+            "mae": mae_val,
+            "sync_time": time.strftime("%H:%M:%S")
+        }
+    except Exception as e:
+        # Fallback structure that still matches the old schema
+        print(f"JSON Assembly Error: {e}")
+        final_json = {
+            "hospital_shortage_risk": "OFFLINE",
+            "dept_predictions": {},
+            "heatmap": [],
+            "breakdown": [],
+            "mae": 0,
+            "sync_time": "System Error"
+        }
 
-# 6. WRITE FILE
-target_file = os.path.join(output_dir, "finaloccupancy.json")
-with open(target_file, "w", encoding="utf-8") as f:
-    json.dump(final_json, f, indent=4)
+    # 6. WRITE FILE
+    target_file = os.path.join(output_dir, "finaloccupancy.json")
+    with open(target_file, "w", encoding="utf-8") as f:
+        json.dump(final_json, f, indent=4)
 
-print(f"FILE_CREATED_AT: {target_file}")
-return mae_val
-
-if __name__ == "__main__":
-    run_pipeline()
+    print(f"FILE_CREATED_AT: {target_file}")
+    return mae_val
