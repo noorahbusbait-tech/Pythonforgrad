@@ -22,17 +22,13 @@ jobs:
         env:
           EXPORT_URL: ${{ secrets.EXPORT_URL }}
           DEPARTMENTS_URL: ${{ secrets.DEPARTMENTS_URL }}
+          GITHUB_WORKSPACE: ${{ github.workspace }} # Pass this to Python
         run: python working_model.py
 
-      - name: CHECK IF FILE EXISTS (CRITICAL DEBUG)
+      - name: LOCATE THE FILE (FINAL DEBUG)
         run: |
-          ls -l ./outputs/
-          if [ -f "./outputs/finaloccupancy.json" ]; then
-            echo "✅ FILE FOUND IN RUNNER!"
-          else
-            echo "❌ FILE NOT FOUND! Python script failed to save to ./outputs/"
-            exit 1
-          fi
+          echo "Current Directory: $(pwd)"
+          find . -name "finaloccupancy.json" # This searches EVERYWHERE for the file
 
       - name: Upload forecast files
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
