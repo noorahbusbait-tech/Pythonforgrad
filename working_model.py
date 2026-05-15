@@ -14,11 +14,7 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
 def run_pipeline():
-    # 1. LOAD DATA 
-    # Initialize variables as empty to avoid 'referenced before assignment' errors
-    df_raw = pd.DataFrame()
-    df_depts = pd.DataFrame()
-    
+    # 1. LOAD DATA
     try:
         export_url = os.environ.get("EXPORT_URL")
         departments_url = os.environ.get("DEPARTMENTS_URL")
@@ -26,28 +22,26 @@ def run_pipeline():
         session.headers.update({'User-Agent': 'Mozilla/5.0'})
         
         # Patient Data
-        raw_resp = session.get(export_url, timeout=30)
-        df_raw = pd.DataFrame(raw_resp.json())
+        raw_data = session.get(export_url, timeout=30).json()
+        df_raw = pd.DataFrame(raw_data)
         
         # Dept Data
-        dept_resp = session.get(departments_url, timeout=30)
-        df_depts = pd.DataFrame(dept_resp.json())
+        dept_data = session.get(departments_url, timeout=30).json()
+        df_depts = pd.DataFrame(dept_data)
     except Exception as e:
         print(f"Data Load Error: {e}")
-        # We don't return here anymore so the script can try to process 
-        # whatever it has or show where it specifically breaks.
+        return 0
 
-    # 2. ML MODELING (Placeholder for your XGBoost logic)
-    # Ensure occ_preds (list of 7 ints) and mae_val (float) are defined by your model
-    # For logic flow, we assume they are created here:
-    # occ_preds = [...]
-    # mae_val = ...
+    # 2. ML MODELING (Placeholder)
+    # Ensure your XGBoost logic creates these:
+    # occ_preds = [list of 7 predictions]
+    # mae_val = float value
+    
+    # --- Logic for demonstration based on your provided values ---
+    # occ_preds = [calculated_values]
+    # mae_val = calculated_mae
 
     # 3. PREPARE DEPT WEIGHTS
-    if df_depts.empty:
-        print("Error: df_depts is empty. Check API/URL.")
-        return 0
-        
     df_depts['total_beds'] = pd.to_numeric(df_depts['total_beds'], errors='coerce').fillna(20)
     df_depts['current_occupancy'] = pd.to_numeric(df_depts['current_occupancy'], errors='coerce').fillna(5)
     total_now = df_depts['current_occupancy'].sum()
@@ -83,7 +77,7 @@ def run_pipeline():
             })
         breakdown.append(day_entry)
 
-    # Top-Level Dept Summary
+    # Top-Level Summary
     for d_name, info in dept_map.items():
         ratio = info['weight']
         cap = info['total_beds']
