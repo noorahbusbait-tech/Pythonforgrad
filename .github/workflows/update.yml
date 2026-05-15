@@ -1,0 +1,39 @@
+name: Hospital Prediction Engine
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  forecast:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - run: pip install -r requirements.txt
+
+      - name: Run prediction model
+        env:
+          EXPORT_URL: ${{ secrets.EXPORT_URL }}
+          DEPARTMENTS_URL: ${{ secrets.DEPARTMENTS_URL }}
+        run: python working_model.py
+
+      - name: Upload forecast files
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          protocol: ftp
+          port: 21
+          local-dir: ./
+          server-dir: ${{ secrets.FTP_REMOTE_DIR }}
+          include: |
+            finaloccupancy.json
+            *.png
