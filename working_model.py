@@ -164,7 +164,7 @@ def run_pipeline():
             day_entry["departments"][d_name] = {"beds": f"{val} Beds", "risk": risk, "pct": f"{round(pct*100,1)}%"}
             heatmap.append({"day": date.strftime('%a'), "department": d_name, "value": val, "risk": risk})
         breakdown.append(day_entry)
-
+    
     final_json = {
         "hospital_shortage_risk": "MEDIUM" if max(occ_preds) > 50 else "LOW",
         "heatmap": heatmap,
@@ -173,11 +173,19 @@ def run_pipeline():
         "sync_time": time.strftime("%H:%M:%S")
     }
 
-    target_file = os.path.join(output_dir, "finaloccupancy.json")
+    # --- THE FORCE-WRITE FIX ---
+    # We define the path relative to the script's current location
+    target_dir = os.path.join(os.getcwd(), "outputs")
+    if not os.path.exists(target_dir):
+        os.makedirs(target_dir, exist_ok=True)
+    
+    target_file = os.path.join(target_dir, "finaloccupancy.json")
+    
     with open(target_file, "w", encoding="utf-8") as f:
         json.dump(final_json, f, indent=4)
     
-    print(f"File successfully saved to: {target_file}")
+    # CRITICAL: This confirms to the GitHub Log exactly where it went
+    print(f"FILE_CREATED_AT: {target_file}") 
     return mae_val
 
 
