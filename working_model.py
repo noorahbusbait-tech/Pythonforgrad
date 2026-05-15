@@ -26,28 +26,29 @@ output_dir = base_path
 
 
 def run_pipeline():
-    # ------------------------------------------------------------------
-    # PART 1: LOAD THE LATEST DATA FROM THE LIVE DATABASE (via PHP URLs)
-    # ------------------------------------------------------------------
+    # --- Part 1: Improved Data Loading ---
     try:
-        # Fetching environment variables
         export_url = os.environ.get("EXPORT_URL")
         departments_url = os.environ.get("DEPARTMENTS_URL")
 
         if not export_url or not departments_url:
             raise ValueError("Environment variables EXPORT_URL or DEPARTMENTS_URL are not set.")
 
+        # Browser-like headers to prevent the server from disconnecting you
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+
         # Add cache-busting query parameter
         export_url = f"{export_url}?t={time.time()}"
         departments_url = f"{departments_url}?t={time.time()}"
 
-        # -----------------------------
         # Load historical patient data
-        # -----------------------------
         print(f"Loading historical data from: {export_url}")
-        response = requests.get(export_url, timeout=60)
+        # Use headers and a slightly shorter timeout to allow for retries
+        response = requests.get(export_url, headers=headers, timeout=30)
         response.raise_for_status()
-
+        
         try:
             raw_json = response.json()
         except Exception as e:
