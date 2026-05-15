@@ -19,7 +19,7 @@ SECONDARY = '#16A085'
 ACCENT = '#E74C3C'
 
 # Paths
-base_path = os.path.dirname(os.path.abspath(__file__))
+base_path = os.getcwd()
 output_dir = os.path.join(base_path, "outputs")
 
 if not os.path.exists(output_dir):
