@@ -20,7 +20,10 @@ ACCENT = '#E74C3C'
 
 # Paths
 base_path = os.path.dirname(os.path.abspath(__file__))
-output_dir = base_path
+output_dir = os.path.join(base_path, "outputs")
+
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
 
 def run_pipeline():
     # ------------------------------------------------------------------
