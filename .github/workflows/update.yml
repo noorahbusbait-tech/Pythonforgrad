@@ -24,6 +24,16 @@ jobs:
           DEPARTMENTS_URL: ${{ secrets.DEPARTMENTS_URL }}
         run: python working_model.py
 
+      - name: CHECK IF FILE EXISTS (CRITICAL DEBUG)
+        run: |
+          ls -l ./outputs/
+          if [ -f "./outputs/finaloccupancy.json" ]; then
+            echo "✅ FILE FOUND IN RUNNER!"
+          else
+            echo "❌ FILE NOT FOUND! Python script failed to save to ./outputs/"
+            exit 1
+          fi
+
       - name: Upload forecast files
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -32,7 +42,8 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftp
           port: 21
-          # Look inside the folder created by the script
           local-dir: ./outputs/
-          # Destination on InfinityFree
+          # Ensure this matches your InfinityFree file manager exactly
           server-dir: htdocs/outputs/
+          # This forces the action to ignore the "sync state" and just push the file
+          dangerous-clean-slate: false
