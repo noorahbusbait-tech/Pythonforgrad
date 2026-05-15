@@ -9,6 +9,7 @@ import requests
 # --- CONFIGURATION ---
 base_path = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
 output_dir = os.path.join(base_path, "outputs")
+csv_path = os.path.join(base_path, "cleandata.csv")
 
 if not os.path.exists(output_dir):
     os.makedirs(output_dir, exist_ok=True)
@@ -33,51 +34,60 @@ def run_pipeline():
         return 0
 
        # 2. ML MODELING (Restored from old code)
+    # 2. ML MODELING (Uses cleandata.csv exactly like the old code)
     try:
         import xgboost as xgb
         from sklearn.metrics import mean_absolute_error
 
+        # Load training data from cleandata.csv
+        df_train = pd.read_csv(csv_path, low_memory=False)
+
         # Parse dates
-        df_raw['Entry'] = pd.to_datetime(
-            df_raw['Adm. Date/Time'],
-            format='mixed',
-            dayfirst=True,
-            errors='coerce'
-        )
-        df_raw['Exit'] = pd.to_datetime(
-            df_raw['DSC Time Clean'],
+        df_train['Entry'] = pd.to_datetime(
+            df_train['Adm. Date/Time'],
             format='mixed',
             dayfirst=True,
             errors='coerce'
         )
 
-        # Fill missing discharge times using LOS
-        if 'LOS' in df_raw.columns:
-            df_raw['LOS'] = pd.to_numeric(df_raw['LOS'], errors='coerce').fillna(0)
-            mask = df_raw['Exit'].isna()
-            df_raw.loc[mask, 'Exit'] = (
-                df_raw.loc[mask, 'Entry'] +
-                pd.to_timedelta(df_raw.loc[mask, 'LOS'], unit='D')
-            )
+        df_train['Exit'] = pd.to_datetime(
+            df_train['DSC Time Clean'],
+            format='mixed',
+            dayfirst=True,
+            errors='coerce'
+        )
+
+        # Fill missing discharge dates using LOS
+        df_train['LOS'] = pd.to_numeric(
+            df_train['LOS'],
+            errors='coerce'
+        ).fillna(0)
+
+        mask = df_train['Exit'].isna()
+        df_train.loc[mask, 'Exit'] = (
+            df_train.loc[mask, 'Entry'] +
+            pd.to_timedelta(df_train.loc[mask, 'LOS'], unit='D')
+        )
 
         # Remove invalid rows
-        df_raw = df_raw.dropna(subset=['Entry', 'Exit'])
+        df_train = df_train.dropna(subset=['Entry', 'Exit'])
 
-        if df_raw.empty:
-            raise ValueError("No valid patient records found after date cleaning.")
+        if df_train.empty:
+            raise ValueError("cleandata.csv contains no valid records.")
 
-        # Build daily census
+        # Build daily occupancy census
         all_dates = pd.date_range(
-            start=df_raw['Entry'].min().date(),
-            end=df_raw['Entry'].max().date()
+            start=df_train['Entry'].min().date(),
+            end=df_train['Entry'].max().date()
         )
 
         census_data = []
         for d in all_dates:
             count = (
-                (df_raw['Entry'].dt.date <= d.date()) &
-                (df_raw['Exit'].dt.date > d.date())
+                (df_train['Entry'].dt.date <= d.date()) &
+                (df_train['Exit'].dt.date > d.date())
             ).sum()
+
             census_data.append({
                 'Date': d,
                 'True_Occupancy': count
@@ -100,16 +110,17 @@ def run_pipeline():
         X = daily_census_df[[f'lag_{i}' for i in range(1, num_lags + 1)]]
         y = daily_census_df['True_Occupancy']
 
-        # Log-transform target
+        # Log transform
         y_log = np.log1p(y)
 
-        # Train model
+        # Train XGBoost
         model = xgb.XGBRegressor(
             n_estimators=200,
             learning_rate=0.03,
             max_depth=4,
             random_state=42
         )
+
         model.fit(X, y_log)
 
         # Calculate MAE
@@ -123,8 +134,9 @@ def run_pipeline():
             4
         )
 
-        # 7-day recursive forecast
+        # Generate 7-day forecast
         last_vals = y.tail(num_lags).tolist()
+
         occ_preds = []
         new_admissions = []
 
@@ -132,7 +144,7 @@ def run_pipeline():
             inp = np.array(last_vals[-num_lags:]).reshape(1, -1)
             p = np.expm1(model.predict(inp)[0])
 
-            # Limit predictions to 0–80 beds
+            # Limit to 0–80 beds
             p = min(80, max(0, p))
 
             occ_preds.append(round(float(p), 1))
@@ -145,10 +157,11 @@ def run_pipeline():
     except Exception as e:
         print(f"Model Error: {e}")
 
-        # Same fallback values used in the old code
+        # Same fallback values as the old code
         occ_preds = [15, 24, 29, 33, 34, 34, 32]
         mae_val = 0.3590
         new_admissions = [15, 14, 12, 13, 11, 10, 9]
+        
     
     # --- Logic for demonstration based on your provided values ---
     # occ_preds = [calculated_values]
