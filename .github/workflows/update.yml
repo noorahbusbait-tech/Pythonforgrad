@@ -22,13 +22,18 @@ jobs:
         env:
           EXPORT_URL: ${{ secrets.EXPORT_URL }}
           DEPARTMENTS_URL: ${{ secrets.DEPARTMENTS_URL }}
-          GITHUB_WORKSPACE: ${{ github.workspace }} # Pass this to Python
         run: python working_model.py
 
-      - name: LOCATE THE FILE (FINAL DEBUG)
+      - name: Emergency File Creation
+        # If Python failed to make the file, this creates a "System Offline" version
         run: |
-          echo "Current Directory: $(pwd)"
-          find . -name "finaloccupancy.json" # This searches EVERYWHERE for the file
+          mkdir -p outputs
+          if [ ! -f outputs/finaloccupancy.json ]; then
+            echo '{"hospital_shortage_risk":"OFFLINE","sync_time":"System Error","mae":0,"breakdown":[]}' > outputs/finaloccupancy.json
+            echo "⚠️ Python failed to create file. Created emergency fallback JSON."
+          else
+            echo "✅ Python file detected."
+          fi
 
       - name: Upload forecast files
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
@@ -39,7 +44,4 @@ jobs:
           protocol: ftp
           port: 21
           local-dir: ./outputs/
-          # Ensure this matches your InfinityFree file manager exactly
           server-dir: htdocs/outputs/
-          # This forces the action to ignore the "sync state" and just push the file
-          dangerous-clean-slate: false
