@@ -32,8 +32,5 @@ jobs:
           password: ${{ secrets.FTP_PASSWORD }}
           protocol: ftp
           port: 21
-          local-dir: ./
-          server-dir: ${{ secrets.FTP_REMOTE_DIR }}
-          include: |
-            finaloccupancy.json
-            *.png
+          local-dir: ./outputs/
+          server-dir: ${{ secrets.FTP_REMOTE_DIR }}outputs/
