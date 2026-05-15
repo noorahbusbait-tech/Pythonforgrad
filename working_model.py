@@ -18,12 +18,13 @@ PRIMARY = '#1F3A5F'
 SECONDARY = '#16A085'
 ACCENT = '#E74C3C'
 
-# Paths
-base_path = os.getcwd()
+# --- CONFIGURATION ---
+base_path = os.getcwd() 
 output_dir = os.path.join(base_path, "outputs")
 
+# Ensure the folder exists
 if not os.path.exists(output_dir):
-    os.makedirs(output_dir)
+    os.makedirs(output_dir, exist_ok=True)
 
 def run_pipeline():
     # ------------------------------------------------------------------
@@ -164,10 +165,13 @@ def run_pipeline():
         "sync_time": time.strftime("%H:%M:%S")
     }
 
-    with open(os.path.join(output_dir, "finaloccupancy.json"), "w", encoding="utf-8") as f:
+    target_file = os.path.join(output_dir, "finaloccupancy.json")
+    with open(target_file, "w", encoding="utf-8") as f:
         json.dump(final_json, f, indent=4)
-
+    
+    print(f"File successfully saved to: {target_file}")
     return mae_val
+
 
 if __name__ == "__main__":
     try:
