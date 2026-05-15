@@ -32,20 +32,25 @@ def run_pipeline():
         export_url = os.environ["EXPORT_URL"]
         departments_url = os.environ["DEPARTMENTS_URL"]
 
+        # Add cache-busting parameter to ensure fresh data
+        export_url = export_url + "?t=" + str(time.time())
+        departments_url = departments_url + "?t=" + str(time.time())
+
         print(f"Loading historical data from: {export_url}")
         df_raw = pd.read_json(export_url)
 
         print(f"Loading departments data from: {departments_url}")
         df_depts = pd.read_json(departments_url)
 
-        # Validate required columns
-        required_cols = ['Adm. Date/Time', 'DSC Time Clean', 'LOS']
+        # Validate required columns from export_data.php
+        required_cols = ['adm_datetime', 'dsc_time', 'los']
         missing_cols = [c for c in required_cols if c not in df_raw.columns]
         if missing_cols:
             raise ValueError(
                 f"Missing columns in export_data.php output: {missing_cols}"
             )
 
+        # Validate required columns from export_departments.php
         dept_required_cols = [
             'department_name',
             'total_beds',
@@ -67,26 +72,28 @@ def run_pipeline():
     # PART 2: FORECAST MODEL
     # ------------------------------------------------------------------
     try:
-        # Convert dates
+        # Convert dates using the actual JSON field names
         df_raw['Entry'] = pd.to_datetime(
-            df_raw['Adm. Date/Time'],
-            format='mixed',
-            dayfirst=True,
+            df_raw['adm_datetime'],
             errors='coerce'
         )
 
         df_raw['Exit'] = pd.to_datetime(
-            df_raw['DSC Time Clean'],
-            format='mixed',
-            dayfirst=True,
+            df_raw['dsc_time'],
             errors='coerce'
         )
 
-        # Fill missing discharge times using LOS
+        # If discharge date is missing, estimate using LOS
         mask = df_raw['Exit'].isna()
         df_raw.loc[mask, 'Exit'] = (
             df_raw.loc[mask, 'Entry'] +
-            pd.to_timedelta(df_raw.loc[mask, 'LOS'], unit='D')
+            pd.to_timedelta(
+                pd.to_numeric(
+                    df_raw.loc[mask, 'los'],
+                    errors='coerce'
+                ),
+                unit='D'
+            )
         )
 
         # Remove invalid rows
@@ -95,7 +102,7 @@ def run_pipeline():
         if df_raw.empty:
             raise ValueError("No valid historical data after cleaning.")
 
-        # Build daily census
+        # Build daily occupancy census
         all_dates = pd.date_range(
             start=df_raw['Entry'].min().date(),
             end=df_raw['Entry'].max().date()
@@ -167,7 +174,8 @@ def run_pipeline():
 
     except Exception as e:
         print(f"Model Error: {e}")
-        # Fallback values
+
+        # Fallback values if model fails
         occ_preds = [15, 24, 29, 33, 34, 34, 32]
         new_admissions = [15, 14, 12, 13, 11, 10, 9]
         mae_val = 0.3590
@@ -193,11 +201,12 @@ def run_pipeline():
             df_depts['current_occupancy'] / total_now
         )
     else:
+        # If all occupancies are zero, split equally
         df_depts['weight'] = 1.0 / max(len(df_depts), 1)
 
     dept_map = df_depts.set_index('department_name').to_dict('index')
 
-    # Forecast dates
+    # Create 7 forecast dates
     today = pd.Timestamp.now().normalize()
     demand_dates = pd.date_range(
         start=today + pd.Timedelta(days=1),
@@ -207,6 +216,7 @@ def run_pipeline():
     breakdown = []
     heatmap = []
 
+    # Overall shortage risk
     max_occ = max(occ_preds)
     if max_occ >= 70:
         hospital_shortage_risk = "HIGH"
@@ -215,6 +225,7 @@ def run_pipeline():
     else:
         hospital_shortage_risk = "LOW"
 
+    # Build forecast output
     for i, date in enumerate(demand_dates):
         day_entry = {
             "date": str(date.date()),
@@ -255,7 +266,7 @@ def run_pipeline():
 
         breakdown.append(day_entry)
 
-    # Final JSON output
+    # Final JSON structure
     final_json = {
         "hospital_shortage_risk": hospital_shortage_risk,
         "heatmap": heatmap,
@@ -264,6 +275,7 @@ def run_pipeline():
         "sync_time": time.strftime("%H:%M:%S")
     }
 
+    # Save finaloccupancy.json
     output_file = os.path.join(output_dir, "finaloccupancy.json")
 
     with open(output_file, "w", encoding="utf-8") as f:
@@ -275,7 +287,7 @@ def run_pipeline():
     # PART 4: CHART GENERATION
     # ------------------------------------------------------------------
     # Insert your existing matplotlib chart code here.
-    # Save charts to output_dir as .png files.
+    # Save chart PNG files to output_dir so they can be uploaded to your website.
 
     return mae_val
 
