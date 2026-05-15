@@ -16,27 +16,22 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
 def run_pipeline():
-    # 1. LOAD DATA (Keep your existing session/request logic here)
+    # 1. LOAD DATA 
     try:
         export_url = os.environ.get("EXPORT_URL")
         departments_url = os.environ.get("DEPARTMENTS_URL")
         session = requests.Session()
         session.headers.update({'User-Agent': 'Mozilla/5.0'})
         
-        # Patient Data
         df_raw = pd.DataFrame(session.get(export_url, timeout=30).json())
-        # Dept Data
         df_depts = pd.DataFrame(session.get(departments_url, timeout=30).json())
     except Exception as e:
         print(f"Data Load Error: {e}")
-        # Fallback empty dataframes if needed for testing
         return 0.4210
 
-    # 2. ML MODELING (Keep your existing XGBoost logic here)
-    # ... [Your logic that creates occ_preds and mae_val] ...
-    # For this example, assuming these variables are now defined:
-    # occ_preds = [calculated values]
-    # mae_val = calculated_mae
+    # 2. ML MODELING 
+    # [Assuming occ_preds and mae_val are generated here]
+    # Example for structure: occ_preds = [7, 48, 51, 34, 53, 50, 42], mae_val = 0.315
 
     # 3. PREPARE DEPT WEIGHTS
     df_depts['total_beds'] = pd.to_numeric(df_depts['total_beds'], errors='coerce').fillna(20)
@@ -49,25 +44,36 @@ def run_pipeline():
     today = pd.Timestamp.now().normalize()
     breakdown = []
     heatmap = []
-    dept_predictions = {} # <--- This is the new part you requested
+    dept_predictions = {}
 
     # Generate Breakdown and Heatmap
     for i, date in enumerate(pd.date_range(start=today + pd.Timedelta(days=1), periods=7)):
-        day_entry = {"date": str(date.date()), "total_occupancy": int(occ_preds[i]), "departments": {}}
+        # Convert occupancy to standard int for JSON compliance
+        day_total = int(occ_preds[i])
+        day_entry = {"date": str(date.date()), "total_occupancy": day_total, "departments": {}}
+        
         for d_name, info in dept_map.items():
             val = round(occ_preds[i] * info['weight'], 1)
             pct = (val / info['total_beds']) if info['total_beds'] > 0 else 0
             risk = "HIGH" if pct > 0.8 else "MEDIUM" if pct > 0.5 else "LOW"
             
-            day_entry["departments"][d_name] = {"beds": f"{val} Beds", "risk": risk, "pct": f"{round(pct*100,1)}%"}
-            heatmap.append({"day": date.strftime('%a'), "department": d_name, "value": val, "risk": risk})
+            day_entry["departments"][d_name] = {
+                "beds": f"{val} Beds", 
+                "risk": risk, 
+                "pct": f"{round(pct*100, 1)}%"
+            }
+            heatmap.append({
+                "day": date.strftime('%a'), 
+                "department": d_name, 
+                "value": val, 
+                "risk": risk
+            })
         breakdown.append(day_entry)
 
-    # NEW: Generate the dept_predictions summary for the top-level cards
+    # Generate the dept_predictions summary
     for d_name, info in dept_map.items():
         ratio = info['weight']
         cap = info['total_beds']
-        # Calculate peak predicted beds for this dept across the 7 days
         peak_beds = max([p * ratio for p in occ_preds])
         occ_pct = peak_beds / cap if cap > 0 else 0
         
@@ -91,8 +97,7 @@ def run_pipeline():
         "sync_time": time.strftime("%H:%M:%S")
     }
 
-# --- THE FORCE-WRITE FIX ---
-    # We define the path relative to the script's current location
+    # --- THE FORCE-WRITE FIX ---
     target_dir = os.path.join(os.getcwd(), "outputs")
     if not os.path.exists(target_dir):
         os.makedirs(target_dir, exist_ok=True)
@@ -102,7 +107,6 @@ def run_pipeline():
     with open(target_file, "w", encoding="utf-8") as f:
         json.dump(final_json, f, indent=4)
     
-    # CRITICAL: This confirms to the GitHub Log exactly where it went
     print(f"FILE_CREATED_AT: {target_file}") 
     return mae_val
 
