@@ -29,41 +29,34 @@ def run_pipeline():
     # ------------------------------------------------------------------
     # PART 1: LOAD THE LATEST DATA FROM THE LIVE DATABASE (via PHP URLs)
     # ------------------------------------------------------------------
-        try:
-        export_url = os.environ["EXPORT_URL"]
-        departments_url = os.environ["DEPARTMENTS_URL"]
+    try:
+        # Fetching environment variables
+        export_url = os.environ.get("EXPORT_URL")
+        departments_url = os.environ.get("DEPARTMENTS_URL")
+
+        if not export_url or not departments_url:
+            raise ValueError("Environment variables EXPORT_URL or DEPARTMENTS_URL are not set.")
 
         # Add cache-busting query parameter
-        export_url = export_url + "?t=" + str(time.time())
-        departments_url = departments_url + "?t=" + str(time.time())
+        export_url = f"{export_url}?t={time.time()}"
+        departments_url = f"{departments_url}?t={time.time()}"
 
         # -----------------------------
         # Load historical patient data
         # -----------------------------
         print(f"Loading historical data from: {export_url}")
         response = requests.get(export_url, timeout=60)
-
-        print("Historical data HTTP status:", response.status_code)
-        print("Historical data preview:")
-        print(response.text[:500])
-
         response.raise_for_status()
 
         try:
             raw_json = response.json()
         except Exception as e:
-            raise ValueError(
-                f"export_data.php did not return valid JSON. "
-                f"Response preview: {response.text[:500]}"
-            ) from e
+            raise ValueError(f"export_data.php did not return valid JSON. Preview: {response.text[:500]}") from e
 
         if isinstance(raw_json, dict) and "error" in raw_json:
-            raise ValueError(
-                f"PHP export returned database error: {raw_json['error']}"
-            )
+            raise ValueError(f"PHP export returned database error: {raw_json['error']}")
 
         df_raw = pd.DataFrame(raw_json)
-
         if df_raw.empty:
             raise ValueError("export_data.php returned no rows.")
 
@@ -72,122 +65,55 @@ def run_pipeline():
         # -----------------------------
         print(f"Loading departments data from: {departments_url}")
         response_dept = requests.get(departments_url, timeout=60)
-
-        print("Departments HTTP status:", response_dept.status_code)
-        print("Departments preview:")
-        print(response_dept.text[:500])
-
         response_dept.raise_for_status()
 
         try:
             dept_json = response_dept.json()
         except Exception as e:
-            raise ValueError(
-                f"export_departments.php did not return valid JSON. "
-                f"Response preview: {response_dept.text[:500]}"
-            ) from e
-
-        if isinstance(dept_json, dict) and "error" in dept_json:
-            raise ValueError(
-                f"Departments export returned database error: "
-                f"{dept_json['error']}"
-            )
+            raise ValueError(f"export_departments.php did not return valid JSON. Preview: {response_dept.text[:500]}") from e
 
         df_depts = pd.DataFrame(dept_json)
-
         if df_depts.empty:
             raise ValueError("export_departments.php returned no rows.")
 
-        # Validate required columns from export_data.php
+        # Validate required columns
         required_cols = ['adm_datetime', 'dsc_time', 'los']
         missing_cols = [c for c in required_cols if c not in df_raw.columns]
         if missing_cols:
-            raise ValueError(
-                f"Missing columns in export_data.php output: {missing_cols}. "
-                f"Available columns: {list(df_raw.columns)}"
-            )
-
-        # Validate required columns from export_departments.php
-        dept_required_cols = [
-            'department_name',
-            'total_beds',
-            'current_occupancy'
-        ]
-        missing_dept_cols = [
-            c for c in dept_required_cols if c not in df_depts.columns
-        ]
-        if missing_dept_cols:
-            raise ValueError(
-                f"Missing columns in export_departments.php output: "
-                f"{missing_dept_cols}. "
-                f"Available columns: {list(df_depts.columns)}"
-            )
+            raise ValueError(f"Missing columns in export_data.php: {missing_cols}")
 
     except Exception as e:
-        raise RuntimeError(
-            f"Failed to load data from PHP export endpoints: {e}"
-        )
+        raise RuntimeError(f"Failed to load data from PHP export endpoints: {e}")
 
     # ------------------------------------------------------------------
     # PART 2: FORECAST MODEL
     # ------------------------------------------------------------------
     try:
-        # Convert dates using the actual JSON field names
-        df_raw['Entry'] = pd.to_datetime(
-            df_raw['adm_datetime'],
-            errors='coerce'
-        )
+        # Convert dates
+        df_raw['Entry'] = pd.to_datetime(df_raw['adm_datetime'], errors='coerce')
+        df_raw['Exit'] = pd.to_datetime(df_raw['dsc_time'], errors='coerce')
 
-        df_raw['Exit'] = pd.to_datetime(
-            df_raw['dsc_time'],
-            errors='coerce'
-        )
-
-        # If discharge date is missing, estimate using LOS
+        # Fill missing Exit dates using LOS
         mask = df_raw['Exit'].isna()
-        df_raw.loc[mask, 'Exit'] = (
-            df_raw.loc[mask, 'Entry'] +
-            pd.to_timedelta(
-                pd.to_numeric(
-                    df_raw.loc[mask, 'los'],
-                    errors='coerce'
-                ),
-                unit='D'
-            )
+        df_raw.loc[mask, 'Exit'] = df_raw.loc[mask, 'Entry'] + pd.to_timedelta(
+            pd.to_numeric(df_raw.loc[mask, 'los'], errors='coerce').fillna(0), unit='D'
         )
 
-        # Remove invalid rows
         df_raw = df_raw.dropna(subset=['Entry', 'Exit'])
-
-        if df_raw.empty:
-            raise ValueError("No valid historical data after cleaning.")
-
+        
         # Build daily occupancy census
-        all_dates = pd.date_range(
-            start=df_raw['Entry'].min().date(),
-            end=df_raw['Entry'].max().date()
-        )
-
+        all_dates = pd.date_range(start=df_raw['Entry'].min().date(), end=df_raw['Entry'].max().date())
         census_data = []
         for d in all_dates:
-            count = (
-                (df_raw['Entry'].dt.date <= d.date()) &
-                (df_raw['Exit'].dt.date > d.date())
-            ).sum()
-
-            census_data.append({
-                'Date': d,
-                'True_Occupancy': int(count)
-            })
+            count = ((df_raw['Entry'].dt.date <= d.date()) & (df_raw['Exit'].dt.date > d.date())).sum()
+            census_data.append({'Date': d, 'True_Occupancy': int(count)})
 
         daily_census_df = pd.DataFrame(census_data)
 
         # Create lag features
         num_lags = 7
         for i in range(1, num_lags + 1):
-            daily_census_df[f'lag_{i}'] = (
-                daily_census_df['True_Occupancy'].shift(i)
-            )
+            daily_census_df[f'lag_{i}'] = daily_census_df['True_Occupancy'].shift(i)
 
         daily_census_df.dropna(inplace=True)
 
@@ -196,137 +122,73 @@ def run_pipeline():
 
         X = daily_census_df[[f'lag_{i}' for i in range(1, num_lags + 1)]]
         y = daily_census_df['True_Occupancy']
-
-        # Train model
         y_log = np.log1p(y)
 
-        model = xgb.XGBRegressor(
-            n_estimators=200,
-            learning_rate=0.03,
-            max_depth=4,
-            random_state=42
-        )
-
+        model = xgb.XGBRegressor(n_estimators=200, learning_rate=0.03, max_depth=4, random_state=42)
         model.fit(X, y_log)
 
         # Evaluate
         train_preds = np.expm1(model.predict(X))
-        mae_val = round(
-            float(mean_absolute_error(y, train_preds)),
-            4
-        )
+        mae_val = round(float(mean_absolute_error(y, train_preds)), 4)
 
         # Forecast next 7 days
         last_vals = y.tail(num_lags).tolist()
         occ_preds = []
-        new_admissions = []
-
         for _ in range(7):
             inp = np.array(last_vals[-num_lags:]).reshape(1, -1)
             p = np.expm1(model.predict(inp)[0])
-
-            # Clamp to realistic range
-            p = min(80, max(0, p))
-
+            p = min(80, max(0, p))  # Clamp
             occ_preds.append(round(float(p), 1))
-            new_admissions.append(max(5, int(p * 0.4)))
             last_vals.append(p)
 
     except Exception as e:
-        print(f"Model Error: {e}")
-
-        # Fallback values if model fails
+        print(f"Model Error: {e}. Using fallback values.")
         occ_preds = [15, 24, 29, 33, 34, 34, 32]
-        new_admissions = [15, 14, 12, 13, 11, 10, 9]
         mae_val = 0.3590
 
     # ------------------------------------------------------------------
     # PART 3: GENERATE finaloccupancy.json
     # ------------------------------------------------------------------
-    df_depts['total_beds'] = pd.to_numeric(
-        df_depts['total_beds'],
-        errors='coerce'
-    ).fillna(0)
+    df_depts['total_beds'] = pd.to_numeric(df_depts['total_beds'], errors='coerce').fillna(0)
+    df_depts['current_occupancy'] = pd.to_numeric(df_depts['current_occupancy'], errors='coerce').fillna(0)
 
-    df_depts['current_occupancy'] = pd.to_numeric(
-        df_depts['current_occupancy'],
-        errors='coerce'
-    ).fillna(0)
-
-    # Calculate department weights
     total_now = df_depts['current_occupancy'].sum()
-
     if total_now > 0:
-        df_depts['weight'] = (
-            df_depts['current_occupancy'] / total_now
-        )
+        df_depts['weight'] = df_depts['current_occupancy'] / total_now
     else:
-        # If all occupancies are zero, split equally
         df_depts['weight'] = 1.0 / max(len(df_depts), 1)
 
     dept_map = df_depts.set_index('department_name').to_dict('index')
-
-    # Create 7 forecast dates
     today = pd.Timestamp.now().normalize()
-    demand_dates = pd.date_range(
-        start=today + pd.Timedelta(days=1),
-        periods=7
-    )
+    demand_dates = pd.date_range(start=today + pd.Timedelta(days=1), periods=7)
 
     breakdown = []
     heatmap = []
 
-    # Overall shortage risk
-    max_occ = max(occ_preds)
-    if max_occ >= 70:
-        hospital_shortage_risk = "HIGH"
-    elif max_occ >= 50:
-        hospital_shortage_risk = "MEDIUM"
-    else:
-        hospital_shortage_risk = "LOW"
+    hospital_shortage_risk = "LOW"
+    if max(occ_preds) >= 70: hospital_shortage_risk = "HIGH"
+    elif max(occ_preds) >= 50: hospital_shortage_risk = "MEDIUM"
 
-    # Build forecast output
     for i, date in enumerate(demand_dates):
-        day_entry = {
-            "date": str(date.date()),
-            "total_occupancy": int(occ_preds[i]),
-            "departments": {}
-        }
-
+        day_entry = {"date": str(date.date()), "total_occupancy": int(occ_preds[i]), "departments": {}}
         for dept_name, info in dept_map.items():
-            total_beds = float(info.get('total_beds', 0))
+            t_beds = float(info.get('total_beds', 0))
             weight = float(info.get('weight', 0))
-
             val = round(occ_preds[i] * weight, 1)
-
-            if total_beds > 0:
-                pct = val / total_beds
-            else:
-                pct = 0
-
-            if pct >= 0.75:
-                risk = "HIGH"
-            elif pct >= 0.50:
-                risk = "MEDIUM"
-            else:
-                risk = "LOW"
+            pct = (val / t_beds) if t_beds > 0 else 0
+            
+            risk = "LOW"
+            if pct >= 0.75: risk = "HIGH"
+            elif pct >= 0.50: risk = "MEDIUM"
 
             day_entry["departments"][dept_name] = {
                 "beds": f"{val} Beds",
                 "risk": risk,
                 "pct": f"{round(pct * 100, 1)}%"
             }
-
-            heatmap.append({
-                "day": date.strftime('%a'),
-                "department": dept_name,
-                "value": val,
-                "risk": risk
-            })
-
+            heatmap.append({"day": date.strftime('%a'), "department": dept_name, "value": val, "risk": risk})
         breakdown.append(day_entry)
 
-    # Final JSON structure
     final_json = {
         "hospital_shortage_risk": hospital_shortage_risk,
         "heatmap": heatmap,
@@ -335,32 +197,19 @@ def run_pipeline():
         "sync_time": time.strftime("%H:%M:%S")
     }
 
-    # Save finaloccupancy.json
     output_file = os.path.join(output_dir, "finaloccupancy.json")
-
     with open(output_file, "w", encoding="utf-8") as f:
         json.dump(final_json, f, indent=4)
 
     print(f"Created {output_file}")
-
-    # ------------------------------------------------------------------
-    # PART 4: CHART GENERATION
-    # ------------------------------------------------------------------
-    # Insert your existing matplotlib chart code here.
-    # Save chart PNG files to output_dir so they can be uploaded to your website.
-
     return mae_val
 
 
 if __name__ == "__main__":
     print("Hospital Prediction Engine Started...")
-
     try:
         mae = run_pipeline()
-        print(
-            f"Forecast updated at {time.strftime('%H:%M:%S')} | "
-            f"MAE: {mae}"
-        )
+        print(f"Forecast updated at {time.strftime('%H:%M:%S')} | MAE: {mae}")
     except Exception as e:
         print(f"Error occurred: {e}")
         raise
