@@ -19,12 +19,20 @@ SECONDARY = '#16A085'
 ACCENT = '#E74C3C'
 
 # --- CONFIGURATION ---
-base_path = os.getcwd() 
+# Use the GitHub environment variable if it exists, otherwise use local path
+base_path = os.environ.get("GITHUB_WORKSPACE", os.getcwd())
 output_dir = os.path.join(base_path, "outputs")
+
+print(f"DEBUG: Base Path is {base_path}")
+print(f"DEBUG: Attempting to create/use directory: {output_dir}")
 
 # Ensure the folder exists
 if not os.path.exists(output_dir):
     os.makedirs(output_dir, exist_ok=True)
+    print("DEBUG: Created new outputs directory")
+else:
+    print("DEBUG: Outputs directory already exists")
+    
 
 def run_pipeline():
     # ------------------------------------------------------------------
