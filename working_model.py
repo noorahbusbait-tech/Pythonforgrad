@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import xgboost as xgb
 from sklearn.metrics import mean_absolute_error
+import requests
 
 # Optional imports for chart generation
 import matplotlib.pyplot as plt
@@ -28,26 +29,82 @@ def run_pipeline():
     # ------------------------------------------------------------------
     # PART 1: LOAD THE LATEST DATA FROM THE LIVE DATABASE (via PHP URLs)
     # ------------------------------------------------------------------
-    try:
+        try:
         export_url = os.environ["EXPORT_URL"]
         departments_url = os.environ["DEPARTMENTS_URL"]
 
-        # Add cache-busting parameter to ensure fresh data
+        # Add cache-busting query parameter
         export_url = export_url + "?t=" + str(time.time())
         departments_url = departments_url + "?t=" + str(time.time())
 
+        # -----------------------------
+        # Load historical patient data
+        # -----------------------------
         print(f"Loading historical data from: {export_url}")
-        df_raw = pd.read_json(export_url)
+        response = requests.get(export_url, timeout=60)
 
+        print("Historical data HTTP status:", response.status_code)
+        print("Historical data preview:")
+        print(response.text[:500])
+
+        response.raise_for_status()
+
+        try:
+            raw_json = response.json()
+        except Exception as e:
+            raise ValueError(
+                f"export_data.php did not return valid JSON. "
+                f"Response preview: {response.text[:500]}"
+            ) from e
+
+        if isinstance(raw_json, dict) and "error" in raw_json:
+            raise ValueError(
+                f"PHP export returned database error: {raw_json['error']}"
+            )
+
+        df_raw = pd.DataFrame(raw_json)
+
+        if df_raw.empty:
+            raise ValueError("export_data.php returned no rows.")
+
+        # -----------------------------
+        # Load department data
+        # -----------------------------
         print(f"Loading departments data from: {departments_url}")
-        df_depts = pd.read_json(departments_url)
+        response_dept = requests.get(departments_url, timeout=60)
+
+        print("Departments HTTP status:", response_dept.status_code)
+        print("Departments preview:")
+        print(response_dept.text[:500])
+
+        response_dept.raise_for_status()
+
+        try:
+            dept_json = response_dept.json()
+        except Exception as e:
+            raise ValueError(
+                f"export_departments.php did not return valid JSON. "
+                f"Response preview: {response_dept.text[:500]}"
+            ) from e
+
+        if isinstance(dept_json, dict) and "error" in dept_json:
+            raise ValueError(
+                f"Departments export returned database error: "
+                f"{dept_json['error']}"
+            )
+
+        df_depts = pd.DataFrame(dept_json)
+
+        if df_depts.empty:
+            raise ValueError("export_departments.php returned no rows.")
 
         # Validate required columns from export_data.php
         required_cols = ['adm_datetime', 'dsc_time', 'los']
         missing_cols = [c for c in required_cols if c not in df_raw.columns]
         if missing_cols:
             raise ValueError(
-                f"Missing columns in export_data.php output: {missing_cols}"
+                f"Missing columns in export_data.php output: {missing_cols}. "
+                f"Available columns: {list(df_raw.columns)}"
             )
 
         # Validate required columns from export_departments.php
@@ -62,11 +119,14 @@ def run_pipeline():
         if missing_dept_cols:
             raise ValueError(
                 f"Missing columns in export_departments.php output: "
-                f"{missing_dept_cols}"
+                f"{missing_dept_cols}. "
+                f"Available columns: {list(df_depts.columns)}"
             )
 
     except Exception as e:
-        raise RuntimeError(f"Failed to load data from PHP export endpoints: {e}")
+        raise RuntimeError(
+            f"Failed to load data from PHP export endpoints: {e}"
+        )
 
     # ------------------------------------------------------------------
     # PART 2: FORECAST MODEL
