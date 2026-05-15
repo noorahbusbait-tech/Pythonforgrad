@@ -14,32 +14,30 @@ if not os.path.exists(output_dir):
     os.makedirs(output_dir, exist_ok=True)
 
 def run_pipeline():
-    # 1. LOAD DATA
-    try:
-        export_url = os.environ.get("EXPORT_URL")
-        departments_url = os.environ.get("DEPARTMENTS_URL")
-        session = requests.Session()
-        session.headers.update({'User-Agent': 'Mozilla/5.0'})
-        
-        # Patient Data
-        raw_data = session.get(export_url, timeout=30).json()
-        df_raw = pd.DataFrame(raw_data)
-        
-        # Dept Data
-        dept_data = session.get(departments_url, timeout=30).json()
-        df_depts = pd.DataFrame(dept_data)
-    except Exception as e:
-        print(f"Data Load Error: {e}")
-        return 0
-
-    # 2. ML MODELING (Placeholder)
-    # Ensure your XGBoost logic creates these:
-    # occ_preds = [list of 7 predictions]
-    # mae_val = float value
+    # 1. LOAD DATA - No fallback 'return' here. If this fails, the log will tell us why.
+    export_url = os.environ.get("EXPORT_URL")
+    departments_url = os.environ.get("DEPARTMENTS_URL")
     
-    # --- Logic for demonstration based on your provided values ---
-    # occ_preds = [calculated_values]
-    # mae_val = calculated_mae
+    if not export_url or not departments_url:
+        raise ValueError("Missing environment variables: EXPORT_URL or DEPARTMENTS_URL")
+
+    session = requests.Session()
+    session.headers.update({'User-Agent': 'Mozilla/5.0'})
+    
+    # Patient Data
+    raw_response = session.get(export_url, timeout=30)
+    raw_response.raise_for_status() # This will stop the script if the URL is bad
+    df_raw = pd.DataFrame(raw_response.json())
+    
+    # Dept Data
+    dept_response = session.get(departments_url, timeout=30)
+    dept_response.raise_for_status()
+    df_depts = pd.DataFrame(dept_response.json())
+
+    # 2. ML MODELING
+    # [Your XGBoost logic must define 'occ_preds' as a list of 7 values and 'mae_val']
+    # Example: occ_preds = [10, 20, 30, 40, 50, 60, 70]
+    # Example: mae_val = 0.315
 
     # 3. PREPARE DEPT WEIGHTS
     df_depts['total_beds'] = pd.to_numeric(df_depts['total_beds'], errors='coerce').fillna(20)
@@ -54,7 +52,6 @@ def run_pipeline():
     heatmap = []
     dept_predictions = {}
 
-    # Forecast Loop (7 Days)
     for i, date in enumerate(pd.date_range(start=today + pd.Timedelta(days=1), periods=7)):
         day_total = int(occ_preds[i])
         day_entry = {"date": str(date.date()), "total_occupancy": day_total, "departments": {}}
@@ -77,7 +74,6 @@ def run_pipeline():
             })
         breakdown.append(day_entry)
 
-    # Top-Level Summary
     for d_name, info in dept_map.items():
         ratio = info['weight']
         cap = info['total_beds']
