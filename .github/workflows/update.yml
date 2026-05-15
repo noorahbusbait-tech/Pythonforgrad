@@ -20,7 +20,6 @@ jobs:
 
       - name: Run prediction model
         env:
-          DB_PASSWORD: ${{ secrets.DB_PASSWORD }} # Ensure this matches your Aiven secret name
           EXPORT_URL: ${{ secrets.EXPORT_URL }}
           DEPARTMENTS_URL: ${{ secrets.DEPARTMENTS_URL }}
         run: python working_model.py
