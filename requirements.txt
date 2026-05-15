@@ -6,3 +6,4 @@ scikit-learn
 sqlalchemy
 mysql-connector-python
 requests
+cloudscraper
