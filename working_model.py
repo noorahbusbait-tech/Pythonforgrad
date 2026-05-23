@@ -47,39 +47,27 @@ def run_pipeline():
     dept_data = safe_get_json(session, departments_url)
 
 # ---------- 1. DEPARTMENT DATA & FALLBACKS ----------
+    # If the firewall blocks the API, we fallback to your TRUE database naming conventions!
     if raw_data is None or dept_data is None:
-        print("🚨 FIREWALL DETECTED: Deploying backup internal data to prevent pipeline crash.")
+        print("🚨 FIREWALL DETECTED: Deploying backup internal database matching real keys.")
         df_depts = pd.DataFrame([
-            {"department_name": "Emergency", "total_beds": 30, "current_occupancy": 18},
+            {"department_name": "ER", "total_beds": 30, "current_occupancy": 18},
             {"department_name": "ICU", "total_beds": 15, "current_occupancy": 12},
-            {"department_name": "Pediatrics", "total_beds": 20, "current_occupancy": 8},
-            {"department_name": "General Medicine", "total_beds": 35, "current_occupancy": 25}
+            {"department_name": "D1", "total_beds": 20, "current_occupancy": 8},
+            {"department_name": "D2", "total_beds": 35, "current_occupancy": 25},
+            {"department_name": "D3", "total_beds": 25, "current_occupancy": 10}
         ])
     else:
-        # Load the dynamic dataset from your active remote database table
-        df_raw_depts = pd.DataFrame(dept_data)
+        # Live data mode: reads directly from your clean PHP script
+        df_depts = pd.DataFrame(dept_data)
         
-        # 🌟 FIX: Automatically convert abbreviation keys to clear chart names
-        if 'department_name' not in df_raw_depts.columns and 'name' in df_raw_depts.columns:
-            df_raw_depts['department_name'] = df_raw_depts['name']
-            
-        db_alias_map = {
-            "ER": "Emergency",
-            "D1": "Pediatrics",
-            "D2": "General Medicine",
-            "D3": "General Medicine"
-        }
-        
-        if 'department_name' in df_raw_depts.columns:
-            df_raw_depts['department_name'] = df_raw_depts['department_name'].replace(db_alias_map)
-            
-            # Combine duplicates safely if multiple keys map to one category
-            df_depts = df_raw_depts.groupby('department_name', as_index=False).agg({
-                'total_beds': 'sum',
-                'current_occupancy': 'sum'
-            })
-        else:
-            df_depts = df_raw_depts
+        # Standardize column name if your database uses "name" instead of "department_name"
+        if 'department_name' not in df_depts.columns and 'name' in df_depts.columns:
+            df_depts['department_name'] = df_depts['name']
+
+    # Keep strings exactly as they come from the database (no mapping, no translations)
+    if 'department_name' in df_depts.columns:
+        df_depts['department_name'] = df_depts['department_name'].astype(str).str.strip()
             
 
     # ---------- 2. ML MODELING (cleandata.csv) ----------
