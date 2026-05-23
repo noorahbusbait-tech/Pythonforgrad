@@ -46,7 +46,7 @@ def run_pipeline():
     raw_data = safe_get_json(session, export_url)
     dept_data = safe_get_json(session, departments_url)
 
-    # ---------- 1. DEPARTMENT DATA & FALLBACKS ----------
+# ---------- 1. DEPARTMENT DATA & FALLBACKS ----------
     if raw_data is None or dept_data is None:
         print("🚨 FIREWALL DETECTED: Deploying backup internal data to prevent pipeline crash.")
         df_depts = pd.DataFrame([
@@ -56,7 +56,31 @@ def run_pipeline():
             {"department_name": "General Medicine", "total_beds": 35, "current_occupancy": 25}
         ])
     else:
-        df_depts = pd.DataFrame(dept_data)
+        # Load the dynamic dataset from your active remote database table
+        df_raw_depts = pd.DataFrame(dept_data)
+        
+        # 🌟 FIX: Automatically convert abbreviation keys to clear chart names
+        if 'department_name' not in df_raw_depts.columns and 'name' in df_raw_depts.columns:
+            df_raw_depts['department_name'] = df_raw_depts['name']
+            
+        db_alias_map = {
+            "ER": "Emergency",
+            "D1": "Pediatrics",
+            "D2": "General Medicine",
+            "D3": "General Medicine"
+        }
+        
+        if 'department_name' in df_raw_depts.columns:
+            df_raw_depts['department_name'] = df_raw_depts['department_name'].replace(db_alias_map)
+            
+            # Combine duplicates safely if multiple keys map to one category
+            df_depts = df_raw_depts.groupby('department_name', as_index=False).agg({
+                'total_beds': 'sum',
+                'current_occupancy': 'sum'
+            })
+        else:
+            df_depts = df_raw_depts
+            
 
     # ---------- 2. ML MODELING (cleandata.csv) ----------
     try:
