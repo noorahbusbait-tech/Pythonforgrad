@@ -49,12 +49,20 @@ def run_pipeline():
                 r = requests.get(url, timeout=30, headers=headers)
                 print(f"\n{label} URL:", url)
                 print("Status:", r.status_code)
+                
                 if r.status_code == 200:
-                    print("First 200 chars:", r.text[:200])
+                    text = r.text.strip()
+                    print("First 200 chars:", text[:200])
+
+                    # ❌ BLOCKED by InfinityFree (HTML instead of JSON)
+                    if "<html" in text.lower() or "aes.js" in text:
+                        print(f"❌ {label} blocked by hosting (HTML returned instead of JSON)")
+                        return None
+
                     try:
                         return r.json()
                     except Exception:
-                        print("❌ Invalid JSON received:", r.text[:200])
+                        print(f"❌ Invalid JSON received from {label}")
                         return None
                 else:
                     print(f"⚠️ HTTP {r.status_code} on attempt {attempt + 1}")
@@ -101,7 +109,6 @@ def run_pipeline():
         current_occ = None
         
     # ---------- 1. DEPARTMENT DATA ----------
-    # Fallback to an elegant row structure if the API returns empty/invalid data
     if dept_data is None or len(dept_data) == 0:
         print("⚠️ No department data received. Initializing clean fallback DataFrame structure.")
         df_depts = pd.DataFrame([
@@ -127,7 +134,6 @@ def run_pipeline():
 
         df_train = pd.read_csv(csv_path, low_memory=False)
         
-        # Explicitly passing dayfirst to eliminate UserWarning format inference complaints
         df_train['Entry'] = pd.to_datetime(df_train['Adm. Date/Time'], errors='coerce', dayfirst=True)
         df_train['Exit'] = pd.to_datetime(df_train['DSC Time Clean'], errors='coerce', dayfirst=True)
         df_train['LOS'] = pd.to_numeric(df_train['LOS'], errors='coerce').fillna(0)
@@ -223,7 +229,6 @@ def run_pipeline():
         for name, info in dept_map.items():
             val = round(day_total * info['weight'], 1)
             
-            # Safe checking via dictionary elements to prevent calculations from dividing by zero
             total_beds = info.get('total_beds', 20)
             pct = val / total_beds if total_beds else 0
             
@@ -235,7 +240,6 @@ def run_pipeline():
     for name, info in dept_map.items():
         peak = max([p * info['weight'] for p in occ_preds])
         
-        # Double safe-fallback loop check
         total_beds = info.get('total_beds', 20)
         pct = peak / total_beds if total_beds else 0
         
