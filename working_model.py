@@ -20,37 +20,31 @@ csv_path = os.path.join(base_path, "cleandata.csv")
 
 os.makedirs(output_dir, exist_ok=True)
 
-def safe_get_json(session, url):
-    if not url:
-        return None
-    try:
-        # Use specific browser headers to reduce firewall blocks
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-            'Accept': 'application/json',
-            'Referer': 'https://google.com'
-        }
-        r = session.get(url, headers=headers, timeout=30)
-        r.raise_for_status()
-
-        print("URL:", url)
-        print("Status:", r.status_code)
-        print("First 500 chars:")
-        print(r.text[:500])
-
-        return r.json()
-    except Exception as e:
-        print(f"⚠️ API Access Blocked or Failed. Using Fallback Data. Reason: {e}")
-        return None
-
 def run_pipeline():
-    session = requests.Session()
-
     export_url = os.environ.get("EXPORT_URL")
     departments_url = os.environ.get("DEPARTMENTS_URL")
 
-    raw_data = safe_get_json(session, export_url)
-    dept_data = safe_get_json(session, departments_url)
+    patients_json_url = export_url.replace("export_patients.php", "patients.json")
+    departments_json_url = departments_url.replace("export_departments.php", "departments.json")
+
+    def fetch_json(url, label):
+        try:
+            r = requests.get(url, timeout=30)
+            print(f"\n{label} URL:", url)
+            print("Status:", r.status_code)
+            print("First 200 chars:", r.text[:200])
+
+            return r.json()
+        except Exception as e:
+            print(f"❌ Failed loading {label}: {e}")
+            return None
+
+    raw_data = fetch_json(patients_json_url, "PATIENTS")
+    dept_data = fetch_json(departments_json_url, "DEPARTMENTS")
+
+    print("\nDEPARTMENT DATA FROM PHP:")
+    print(dept_data)
+    
     
     # ---------- LIVE PATIENT DATA ----------
     live_df = pd.DataFrame()
@@ -93,24 +87,13 @@ def run_pipeline():
     else:
         current_occ = None
         
-    # ---------- 1. DEPARTMENT DATA & FALLBACKS ----------
-    # If the firewall blocks the API, we fallback to your TRUE database naming conventions!
-    if raw_data is None or dept_data is None:
-        print("🚨 FIREWALL DETECTED: Deploying backup internal database matching real keys.")
-        df_depts = pd.DataFrame([
-            {"department_name": "ER", "total_beds": 30, "current_occupancy": 18},
-            {"department_name": "ICU", "total_beds": 15, "current_occupancy": 12},
-            {"department_name": "D1", "total_beds": 20, "current_occupancy": 8},
-            {"department_name": "D2", "total_beds": 35, "current_occupancy": 25},
-            {"department_name": "D3", "total_beds": 25, "current_occupancy": 10}
-        ])
-    else:
-        # Live data mode: reads directly from your clean PHP script
-        df_depts = pd.DataFrame(dept_data)
-        
-        # Standardize column name if your database uses "name" instead of "department_name"
-        if 'department_name' not in df_depts.columns and 'name' in df_depts.columns:
-            df_depts['department_name'] = df_depts['name']
+    # ---------- 1. DEPARTMENT DATA ----------
+    # Live data mode: reads directly from your clean PHP script data
+    df_depts = pd.DataFrame(dept_data)
+    
+    # Standardize column name if your database uses "name" instead of "department_name"
+    if 'department_name' not in df_depts.columns and 'name' in df_depts.columns:
+        df_depts['department_name'] = df_depts['name']
 
     # Keep strings exactly as they come from the database (no mapping, no translations)
     if 'department_name' in df_depts.columns:
