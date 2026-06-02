@@ -21,23 +21,41 @@ csv_path = os.path.join(base_path, "cleandata.csv")
 os.makedirs(output_dir, exist_ok=True)
 
 def run_pipeline():
-    export_url = os.environ.get("EXPORT_URL")
-    departments_url = os.environ.get("DEPARTMENTS_URL")
+    export_url = os.environ.get("EXPORT_URL", "")
+    departments_url = os.environ.get("DEPARTMENTS_URL", "")
 
-    patients_json_url = export_url.replace("export_patients.php", "patients.json")
-    departments_json_url = departments_url.replace("export_departments.php", "departments.json")
+    # Safeguard if environment variables are completely missing
+    patients_json_url = export_url.replace("export_patients.php", "patients.json") if export_url else ""
+    departments_json_url = departments_url.replace("export_departments.php", "departments.json") if departments_url else ""
 
     def fetch_json(url, label):
-        try:
-            r = requests.get(url, timeout=30)
-            print(f"\n{label} URL:", url)
-            print("Status:", r.status_code)
-            print("First 200 chars:", r.text[:200])
-
-            return r.json()
-        except Exception as e:
-            print(f"❌ Failed loading {label}: {e}")
+        if not url:
+            print(f"⚠️ No URL provided for {label}, skipping fetch.")
             return None
+        
+        # Retry mechanism to combat intermittent network issues ('RemoteDisconnected')
+        retries = 3
+        for attempt in range(retries):
+            try:
+                r = requests.get(url, timeout=30)
+                print(f"\n{label} URL:", url)
+                print("Status:", r.status_code)
+                if r.status_code == 200:
+                    print("First 200 chars:", r.text[:200])
+                    try:
+                        return r.json()
+                    except Exception:
+                        print("❌ Invalid JSON received:", r.text[:200])
+                        return None
+                else:
+                    print(f"⚠️ HTTP {r.status_code} on attempt {attempt + 1}")
+            except Exception as e:
+                print(f"⚠️ Attempt {attempt + 1} failed loading {label}: {e}")
+                if attempt < retries - 1:
+                    time.sleep(2) # Wait 2 seconds before retrying
+                else:
+                    print(f"❌ All retries failed loading {label}.")
+        return None
 
     raw_data = fetch_json(patients_json_url, "PATIENTS")
     dept_data = fetch_json(departments_json_url, "DEPARTMENTS")
@@ -45,11 +63,10 @@ def run_pipeline():
     print("\nDEPARTMENT DATA FROM PHP:")
     print(dept_data)
     
-    
     # ---------- LIVE PATIENT DATA ----------
     live_df = pd.DataFrame()
 
-    if raw_data is not None:
+    if raw_data is not None and len(raw_data) > 0:
         live_df = pd.DataFrame(raw_data)
         print("Raw records received:", len(live_df))
 
@@ -58,46 +75,40 @@ def run_pipeline():
             print(live_df.columns.tolist())
 
         if 'status' in live_df.columns:
-            live_df['status'] = (
-                live_df['status']
-                .astype(str)
-                .str.strip()
-            )
+            live_df['status'] = live_df['status'].astype(str).str.strip()
 
         if 'department' in live_df.columns:
-            live_df['department'] = (
-                live_df['department']
-                .astype(str)
-                .str.strip()
-            )
+            live_df['department'] = live_df['department'].astype(str).str.strip()
 
         if 'status' in live_df.columns:
-            current_occ = (
-                live_df['status']
-                .str.lower()
-                .eq('admitted')
-                .sum()
-            )
+            current_occ = live_df['status'].str.lower().eq('admitted').sum()
         else:
             print("WARNING: status column not found.")
             current_occ = None
 
         print(f"Live admitted patients: {current_occ}")
-
     else:
+        print("⚠️ No live patient data received. Falling back.")
         current_occ = None
         
     # ---------- 1. DEPARTMENT DATA ----------
-    # Live data mode: reads directly from your clean PHP script data
-    df_depts = pd.DataFrame(dept_data)
+    # Fixed Fallback to a structured row frame instead of an empty broadcast vector
+    if dept_data is None or len(dept_data) == 0:
+        print("⚠️ No department data received. Initializing clean fallback DataFrame structure.")
+        df_depts = pd.DataFrame([
+            {"department_name": "General", "total_beds": 20, "current_occupancy": 5}
+        ])
+    else:
+        df_depts = pd.DataFrame(dept_data)
     
     # Standardize column name if your database uses "name" instead of "department_name"
     if 'department_name' not in df_depts.columns and 'name' in df_depts.columns:
         df_depts['department_name'] = df_depts['name']
 
-    # Keep strings exactly as they come from the database (no mapping, no translations)
     if 'department_name' in df_depts.columns:
         df_depts['department_name'] = df_depts['department_name'].astype(str).str.strip()
+    else:
+        df_depts['department_name'] = 'General'
             
 
     # ---------- 2. ML MODELING (cleandata.csv) ----------
@@ -106,6 +117,7 @@ def run_pipeline():
         from sklearn.metrics import mean_absolute_error
 
         df_train = pd.read_csv(csv_path, low_memory=False)
+        
         df_train['Entry'] = pd.to_datetime(df_train['Adm. Date/Time'], errors='coerce', dayfirst=True)
         df_train['Exit'] = pd.to_datetime(df_train['DSC Time Clean'], errors='coerce', dayfirst=True)
         df_train['LOS'] = pd.to_numeric(df_train['LOS'], errors='coerce').fillna(0)
@@ -137,10 +149,7 @@ def run_pipeline():
 
         # Inject live occupancy if available
         if current_occ is not None:
-            print(
-                f"Replacing latest historical occupancy "
-                f"{last_vals[-1]} with live occupancy {current_occ}"
-            )
+            print(f"Replacing latest historical occupancy {last_vals[-1]} with live occupancy {current_occ}")
             last_vals[-1] = current_occ
 
         occ_preds, new_admissions = [], []
@@ -159,10 +168,10 @@ def run_pipeline():
         mae_val = 0.4500
 
     # ---------- 3. DEPARTMENT WEIGHTS ----------
-    df_depts['total_beds'] = pd.to_numeric(
-        df_depts['total_beds'],
-        errors='coerce'
-    ).fillna(20)
+    if 'total_beds' not in df_depts.columns:
+        df_depts['total_beds'] = 20
+    else:
+        df_depts['total_beds'] = pd.to_numeric(df_depts['total_beds'], errors='coerce').fillna(20)
 
     # ---------- LIVE DEPARTMENT OCCUPANCY ----------
     if (
@@ -170,51 +179,28 @@ def run_pipeline():
         and 'status' in live_df.columns
         and 'department' in live_df.columns
     ):
-        admitted_df = live_df[
-            live_df['status']
-            .str.lower()
-            .eq('admitted')
-        ]
+        admitted_df = live_df[live_df['status'].str.lower().eq('admitted')]
+        dept_live_occ = admitted_df.groupby('department').size().to_dict()
 
-        dept_live_occ = (
-            admitted_df
-            .groupby('department')
-            .size()
-            .to_dict()
-        )
-
-        df_depts['current_occupancy'] = (
-            df_depts['department_name']
-            .map(dept_live_occ)
-            .fillna(0)
-        )
-
-        print("Live department occupancy:")
-        print(dept_live_occ)
-
+        df_depts['current_occupancy'] = df_depts['department_name'].map(dept_live_occ).fillna(0)
+        print("Live department occupancy:", dept_live_occ)
     else:
-        df_depts['current_occupancy'] = pd.to_numeric(
-            df_depts['current_occupancy'],
-            errors='coerce'
-        ).fillna(5)
+        if 'current_occupancy' not in df_depts.columns:
+            df_depts['current_occupancy'] = 5
+        else:
+            df_depts['current_occupancy'] = pd.to_numeric(df_depts['current_occupancy'], errors='coerce').fillna(5)
 
     total_now = df_depts['current_occupancy'].sum()
 
     if total_now > 0:
-        df_depts['weight'] = (
-            df_depts['current_occupancy']
-            / total_now
-        )
+        df_depts['weight'] = df_depts['current_occupancy'] / total_now
     else:
-        df_depts['weight'] = (
-            1 / len(df_depts)
-        )
+        df_depts['weight'] = 1 / len(df_depts)
 
-    dept_map = (
-        df_depts
-        .set_index('department_name')
-        .to_dict('index')
-    )
+    # Clean duplicates and missing keys before tracking indices
+    df_depts = df_depts.dropna(subset=['department_name'])
+    df_depts = df_depts.drop_duplicates(subset=['department_name'])
+    dept_map = df_depts.set_index('department_name').to_dict('index')
     
     # ---------- 4. JSON GENERATION ----------
     today = pd.Timestamp.now().normalize()
@@ -227,7 +213,11 @@ def run_pipeline():
         
         for name, info in dept_map.items():
             val = round(day_total * info['weight'], 1)
-            pct = val / info['total_beds'] if info['total_beds'] > 0 else 0
+            
+            # Safe Key Check Fallback
+            total_beds = info.get('total_beds', 20)
+            pct = val / total_beds if total_beds else 0
+            
             risk = "HIGH" if pct > 0.8 else "MEDIUM" if pct > 0.5 else "LOW"
             entry["departments"][name] = {"beds": val, "risk": risk, "pct": round(pct * 100, 1)}
             heatmap.append({"day": date.strftime("%a"), "department": name, "value": val, "risk": risk})
@@ -235,9 +225,13 @@ def run_pipeline():
 
     for name, info in dept_map.items():
         peak = max([p * info['weight'] for p in occ_preds])
-        pct = peak / info['total_beds'] if info['total_beds'] > 0 else 0
+        
+        # Safe Key Check Fallback
+        total_beds = info.get('total_beds', 20)
+        pct = peak / total_beds if total_beds else 0
+        
         dept_predictions[name] = {
-            "beds": round(peak, 1), "capacity": int(info['total_beds']),
+            "beds": round(peak, 1), "capacity": int(total_beds),
             "risk": "HIGH" if pct > 0.8 else "MEDIUM" if pct > 0.5 else "LOW",
             "share_percent": round(info['weight'] * 100, 1),
             "occupancy_pct": round(pct * 100, 1)
