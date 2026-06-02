@@ -21,8 +21,10 @@ csv_path = os.path.join(base_path, "cleandata.csv")
 os.makedirs(output_dir, exist_ok=True)
 
 def run_pipeline():
-    departments_json_url = "https://norah.42web.io/departments_api.php"
-    patients_json_url = "https://norah.42web.io/patients_api.php"
+    # DIRECT ASSIGNMENT WITH LOGIC REMOVED
+    departments_json_url = "https://raw.githubusercontent.com/noorahbusbait-tech/Pythonforgrad/main/departments.json"
+    patients_json_url = "https://raw.githubusercontent.com/noorahbusbait/Pythonforgrad/main/patients.json"
+    
     print("PATIENTS FINAL URL:", patients_json_url)
     print("DEPARTMENTS FINAL URL:", departments_json_url)
     
@@ -47,11 +49,6 @@ def run_pipeline():
                 if r.status_code == 200:
                     text = r.text.strip()
                     print("First 200 chars:", text[:200])
-
-                    # ❌ BLOCKED by InfinityFree (HTML instead of JSON)
-                    if "<html" in text.lower() or "aes.js" in text:
-                        print(f"❌ {label} blocked by hosting (HTML returned instead of JSON)")
-                        return None
 
                     try:
                         return r.json()
