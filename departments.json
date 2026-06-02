@@ -1,0 +1,27 @@
+[
+    {
+        "department_name": "ER",
+        "total_beds": 20,
+        "current_occupancy": 20
+    },
+    {
+        "department_name": "ICU",
+        "total_beds": 15,
+        "current_occupancy": 3
+    },
+    {
+        "department_name": "D1",
+        "total_beds": 15,
+        "current_occupancy": 14
+    },
+    {
+        "department_name": "D2",
+        "total_beds": 15,
+        "current_occupancy": 7
+    },
+    {
+        "department_name": "D3",
+        "total_beds": 15,
+        "current_occupancy": 15
+    }
+]
