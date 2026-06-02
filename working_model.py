@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+"# -*- coding: utf-8 -*-
 import os
 import json
 import time
@@ -45,8 +45,49 @@ def run_pipeline():
 
     raw_data = safe_get_json(session, export_url)
     dept_data = safe_get_json(session, departments_url)
+    
+    # ---------- LIVE PATIENT DATA ----------
+    live_df = pd.DataFrame()
 
-# ---------- 1. DEPARTMENT DATA & FALLBACKS ----------
+    if raw_data is not None:
+        live_df = pd.DataFrame(raw_data)
+        print("Raw records received:", len(live_df))
+
+        if not live_df.empty:
+            print("Available columns:")
+            print(live_df.columns.tolist())
+
+        if 'status' in live_df.columns:
+            live_df['status'] = (
+                live_df['status']
+                .astype(str)
+                .str.strip()
+            )
+
+        if 'department' in live_df.columns:
+            live_df['department'] = (
+                live_df['department']
+                .astype(str)
+                .str.strip()
+            )
+
+        if 'status' in live_df.columns:
+            current_occ = (
+                live_df['status']
+                .str.lower()
+                .eq('admitted')
+                .sum()
+            )
+        else:
+            print("WARNING: status column not found.")
+            current_occ = None
+
+        print(f"Live admitted patients: {current_occ}")
+
+    else:
+        current_occ = None
+        
+    # ---------- 1. DEPARTMENT DATA & FALLBACKS ----------
     # If the firewall blocks the API, we fallback to your TRUE database naming conventions!
     if raw_data is None or dept_data is None:
         print("🚨 FIREWALL DETECTED: Deploying backup internal database matching real keys.")
@@ -105,6 +146,14 @@ def run_pipeline():
         mae_val = round(mean_absolute_error(y, np.expm1(model.predict(X))), 4)
         last_vals = y.tail(7).tolist()
 
+        # Inject live occupancy if available
+        if current_occ is not None:
+            print(
+                f"Replacing latest historical occupancy "
+                f"{last_vals[-1]} with live occupancy {current_occ}"
+            )
+            last_vals[-1] = current_occ
+
         occ_preds, new_admissions = [], []
         for _ in range(7):
             inp = np.array(last_vals[-7:]).reshape(1, -1)
@@ -121,12 +170,63 @@ def run_pipeline():
         mae_val = 0.4500
 
     # ---------- 3. DEPARTMENT WEIGHTS ----------
-    df_depts['total_beds'] = pd.to_numeric(df_depts['total_beds'], errors='coerce').fillna(20)
-    df_depts['current_occupancy'] = pd.to_numeric(df_depts['current_occupancy'], errors='coerce').fillna(5)
-    total_now = df_depts['current_occupancy'].sum()
-    df_depts['weight'] = df_depts['current_occupancy'] / total_now if total_now > 0 else 1 / len(df_depts)
-    dept_map = df_depts.set_index('department_name').to_dict('index')
+    df_depts['total_beds'] = pd.to_numeric(
+        df_depts['total_beds'],
+        errors='coerce'
+    ).fillna(20)
 
+    # ---------- LIVE DEPARTMENT OCCUPANCY ----------
+    if (
+        not live_df.empty
+        and 'status' in live_df.columns
+        and 'department' in live_df.columns
+    ):
+        admitted_df = live_df[
+            live_df['status']
+            .str.lower()
+            .eq('admitted')
+        ]
+
+        dept_live_occ = (
+            admitted_df
+            .groupby('department')
+            .size()
+            .to_dict()
+        )
+
+        df_depts['current_occupancy'] = (
+            df_depts['department_name']
+            .map(dept_live_occ)
+            .fillna(0)
+        )
+
+        print("Live department occupancy:")
+        print(dept_live_occ)
+
+    else:
+        df_depts['current_occupancy'] = pd.to_numeric(
+            df_depts['current_occupancy'],
+            errors='coerce'
+        ).fillna(5)
+
+    total_now = df_depts['current_occupancy'].sum()
+
+    if total_now > 0:
+        df_depts['weight'] = (
+            df_depts['current_occupancy']
+            / total_now
+        )
+    else:
+        df_depts['weight'] = (
+            1 / len(df_depts)
+        )
+
+    dept_map = (
+        df_depts
+        .set_index('department_name')
+        .to_dict('index')
+    )
+    
     # ---------- 4. JSON GENERATION ----------
     today = pd.Timestamp.now().normalize()
     demand_dates = pd.date_range(today + pd.Timedelta(days=1), periods=7)
