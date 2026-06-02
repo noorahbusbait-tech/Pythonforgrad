@@ -23,7 +23,7 @@ os.makedirs(output_dir, exist_ok=True)
 def run_pipeline():
     # DIRECT ASSIGNMENT WITH LOGIC REMOVED
     departments_json_url = "https://raw.githubusercontent.com/noorahbusbait-tech/Pythonforgrad/main/departments.json"
-    patients_json_url = "https://raw.githubusercontent.com/noorahbusbait/Pythonforgrad/main/patients.json"
+    patients_json_url = "https://raw.githubusercontent.com/noorahbusbait-tech/Pythonforgrad/main/patients.json"
     
     print("PATIENTS FINAL URL:", patients_json_url)
     print("DEPARTMENTS FINAL URL:", departments_json_url)
