@@ -21,14 +21,8 @@ csv_path = os.path.join(base_path, "cleandata.csv")
 os.makedirs(output_dir, exist_ok=True)
 
 def run_pipeline():
-    export_url = os.environ.get("EXPORT_URL", "")
-    departments_url = os.environ.get("DEPARTMENTS_URL", "")
-    print("RAW EXPORT_URL:", export_url)
-    print("RAW DEPARTMENTS_URL:", departments_url)
-    
-    # Safeguard if environment variables are completely missing
-    patients_json_url = export_url.replace("export_patients.php", "patients.json") if export_url else ""
-    departments_json_url = departments_url.replace("export_departments.php", "departments.json") if departments_url else ""
+    departments_json_url = "https://norah.42web.io/departments_api.php"
+    patients_json_url = "https://norah.42web.io/patients_api.php"
     print("PATIENTS FINAL URL:", patients_json_url)
     print("DEPARTMENTS FINAL URL:", departments_json_url)
     
