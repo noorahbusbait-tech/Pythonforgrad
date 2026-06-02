@@ -32,6 +32,12 @@ def safe_get_json(session, url):
         }
         r = session.get(url, headers=headers, timeout=30)
         r.raise_for_status()
+
+        print("URL:", url)
+        print("Status:", r.status_code)
+        print("First 500 chars:")
+        print(r.text[:500])
+
         return r.json()
     except Exception as e:
         print(f"⚠️ API Access Blocked or Failed. Using Fallback Data. Reason: {e}")
