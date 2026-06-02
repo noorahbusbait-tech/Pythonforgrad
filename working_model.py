@@ -29,7 +29,9 @@ def run_pipeline():
     # Safeguard if environment variables are completely missing
     patients_json_url = export_url.replace("export_patients.php", "patients.json") if export_url else ""
     departments_json_url = departments_url.replace("export_departments.php", "departments.json") if departments_url else ""
-
+    print("PATIENTS FINAL URL:", patients_json_url)
+    print("DEPARTMENTS FINAL URL:", departments_json_url)
+    
     def fetch_json(url, label):
         if not url:
             print(f"⚠️ No URL provided for {label}, skipping fetch.")
