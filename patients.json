@@ -236,20 +236,20 @@
         "department": null
     },
     {
-        "status": "Pending",
-        "department": null
+        "status": "Admitted",
+        "department": "ER"
     },
     {
-        "status": "Pending",
-        "department": null
+        "status": "Admitted",
+        "department": "D2"
     },
     {
-        "status": "Pending",
-        "department": null
+        "status": "Admitted",
+        "department": "ICU"
     },
     {
-        "status": "Pending",
-        "department": null
+        "status": "Admitted",
+        "department": "D3"
     },
     {
         "status": "Pending",
