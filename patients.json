@@ -41,7 +41,7 @@
     },
     {
         "status": "Admitted",
-        "department": "D1"
+        "department": "D3"
     },
     {
         "status": "Discharged",
@@ -57,127 +57,127 @@
     },
     {
         "status": "Admitted",
-        "department": "D2"
-    },
-    {
-        "status": "Admitted",
-        "department": "D2"
-    },
-    {
-        "status": "Admitted",
-        "department": "D2"
-    },
-    {
-        "status": "Admitted",
-        "department": "D2"
-    },
-    {
-        "status": "Admitted",
-        "department": "ICU"
-    },
-    {
-        "status": "Admitted",
-        "department": "ICU"
-    },
-    {
-        "status": "Discharged",
-        "department": "D1"
-    },
-    {
-        "status": "Discharged",
-        "department": "D1"
-    },
-    {
-        "status": "Discharged",
-        "department": "D1"
-    },
-    {
-        "status": "Discharged",
-        "department": "D1"
-    },
-    {
-        "status": "Discharged",
-        "department": "D1"
-    },
-    {
-        "status": "Discharged",
-        "department": "D1"
-    },
-    {
-        "status": "Discharged",
-        "department": "D1"
-    },
-    {
-        "status": "Discharged",
-        "department": "D1"
-    },
-    {
-        "status": "Discharged",
-        "department": "D1"
-    },
-    {
-        "status": "Admitted",
-        "department": "ICU"
-    },
-    {
-        "status": "Admitted",
-        "department": "ICU"
-    },
-    {
-        "status": "Discharged",
-        "department": null
-    },
-    {
-        "status": "Pending",
-        "department": null
-    },
-    {
-        "status": "Discharged",
         "department": "D3"
     },
     {
-        "status": "Pending",
-        "department": null
+        "status": "Admitted",
+        "department": "D2"
     },
     {
-        "status": "Pending",
-        "department": null
+        "status": "Admitted",
+        "department": "D2"
     },
     {
-        "status": "Pending",
-        "department": null
+        "status": "Admitted",
+        "department": "D2"
     },
     {
-        "status": "Pending",
-        "department": null
+        "status": "Admitted",
+        "department": "ICU"
     },
     {
-        "status": "Pending",
-        "department": null
-    },
-    {
-        "status": "Pending",
-        "department": null
-    },
-    {
-        "status": "Pending",
-        "department": null
-    },
-    {
-        "status": "Pending",
-        "department": null
-    },
-    {
-        "status": "Pending",
-        "department": null
+        "status": "Admitted",
+        "department": "ICU"
     },
     {
         "status": "Discharged",
-        "department": "D3"
+        "department": "D1"
     },
     {
         "status": "Discharged",
+        "department": "D1"
+    },
+    {
+        "status": "Discharged",
+        "department": "D1"
+    },
+    {
+        "status": "Discharged",
+        "department": "D1"
+    },
+    {
+        "status": "Discharged",
+        "department": "D1"
+    },
+    {
+        "status": "Discharged",
+        "department": "D1"
+    },
+    {
+        "status": "Discharged",
+        "department": "D1"
+    },
+    {
+        "status": "Discharged",
+        "department": "D1"
+    },
+    {
+        "status": "Discharged",
+        "department": "D1"
+    },
+    {
+        "status": "Admitted",
         "department": "D3"
+    },
+    {
+        "status": "Admitted",
+        "department": "ICU"
+    },
+    {
+        "status": "Admitted",
+        "department": "D1"
+    },
+    {
+        "status": "Admitted",
+        "department": "D1"
+    },
+    {
+        "status": "Admitted",
+        "department": "ICU"
+    },
+    {
+        "status": "Pending",
+        "department": null
+    },
+    {
+        "status": "Pending",
+        "department": null
+    },
+    {
+        "status": "Pending",
+        "department": null
+    },
+    {
+        "status": "Admitted",
+        "department": "D1"
+    },
+    {
+        "status": "Admitted",
+        "department": "D1"
+    },
+    {
+        "status": "Admitted",
+        "department": "D1"
+    },
+    {
+        "status": "Admitted",
+        "department": "D1"
+    },
+    {
+        "status": "Admitted",
+        "department": "D1"
+    },
+    {
+        "status": "Admitted",
+        "department": "D1"
+    },
+    {
+        "status": "Admitted",
+        "department": "D1"
+    },
+    {
+        "status": "Admitted",
+        "department": "D1"
     },
     {
         "status": "Discharged",

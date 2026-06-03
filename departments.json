@@ -12,16 +12,16 @@
     {
         "department_name": "D1",
         "total_beds": "15",
-        "current_occupancy": "4"
+        "current_occupancy": "13"
     },
     {
         "department_name": "D2",
         "total_beds": "15",
-        "current_occupancy": "4"
+        "current_occupancy": "3"
     },
     {
         "department_name": "D3",
         "total_beds": "15",
-        "current_occupancy": "0"
+        "current_occupancy": "3"
     }
 ]
