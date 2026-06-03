@@ -213,36 +213,63 @@ def run_pipeline():
     demand_dates = pd.date_range(today + pd.Timedelta(days=1), periods=7)
     breakdown, heatmap, dept_predictions = [], [], {}
 
+    # Calculate global/department overarching risks using the day threshold criteria
+    for name, info in dept_map.items():
+        total_beds = info.get('total_beds', 20)
+        forecast_vals = [p * info['weight'] for p in occ_preds]
+        occupancy_pcts = [v / total_beds if total_beds else 0 for v in forecast_vals]
+        
+        high_days = sum(p >= 0.80 for p in occupancy_pcts)
+        medium_days = sum(0.50 <= p < 0.80 for p in occupancy_pcts)
+        
+        if high_days >= 3:
+            dept_risk = "HIGH"
+        elif medium_days >= 3:
+            dept_risk = "MEDIUM"
+        else:
+            dept_risk = "LOW"
+            
+        peak = max(forecast_vals)
+        pct = peak / total_beds if total_beds else 0
+
+        dept_predictions[name] = {
+            "beds": round(peak, 1), 
+            "capacity": int(total_beds),
+            "risk": dept_risk,
+            "share_percent": round(info['weight'] * 100, 1),
+            "occupancy_pct": round(pct * 100, 1)
+        }
+
     for i, date in enumerate(demand_dates):
         day_total = occ_preds[i]
         entry = {"date": str(date.date()), "total_occupancy": day_total, "departments": {}}
         
         for name, info in dept_map.items():
             val = round(day_total * info['weight'], 1)
-            
             total_beds = info.get('total_beds', 20)
             pct = val / total_beds if total_beds else 0
             
-            risk = "HIGH" if pct > 0.8 else "MEDIUM" if pct > 0.5 else "LOW"
-            entry["departments"][name] = {"beds": val, "risk": risk, "pct": round(pct * 100, 1)}
-            heatmap.append({"day": date.strftime("%a"), "department": name, "value": val, "risk": risk})
+            # Using your continuous logic for explicit single-day markers inside the heatmap/breakdown
+            day_risk = "HIGH" if pct >= 0.80 else "MEDIUM" if pct >= 0.50 else "LOW"
+            
+            entry["departments"][name] = {"beds": val, "risk": day_risk, "pct": round(pct * 100, 1)}
+            heatmap.append({"day": date.strftime("%a"), "department": name, "value": val, "risk": day_risk})
         breakdown.append(entry)
 
-    for name, info in dept_map.items():
-        peak = max([p * info['weight'] for p in occ_preds])
-        
-        total_beds = info.get('total_beds', 20)
-        pct = peak / total_beds if total_beds else 0
-        
-        dept_predictions[name] = {
-            "beds": round(peak, 1), "capacity": int(total_beds),
-            "risk": "HIGH" if pct > 0.8 else "MEDIUM" if pct > 0.5 else "LOW",
-            "share_percent": round(info['weight'] * 100, 1),
-            "occupancy_pct": round(pct * 100, 1)
-        }
+    # Whole-hospital overall risk using the threshold logic (Hospital Capacity = 80)
+    hospital_pcts = [v / 80 for v in occ_preds]
+    h_high_days = sum(p >= 0.80 for p in hospital_pcts)
+    h_medium_days = sum(0.50 <= p < 0.80 for p in hospital_pcts)
+    
+    if h_high_days >= 3:
+        hospital_risk = "HIGH"
+    elif h_medium_days >= 3:
+        hospital_risk = "MEDIUM"
+    else:
+        hospital_risk = "LOW"
 
     final_json = {
-        "hospital_shortage_risk": "HIGH" if max(occ_preds) > 70 else "LOW",
+        "hospital_shortage_risk": hospital_risk,
         "dept_predictions": dept_predictions,
         "heatmap": heatmap,
         "breakdown": breakdown,
@@ -299,33 +326,3 @@ def run_pipeline():
 
         # CHART 2: Total Occupancy Line
         plt.figure(figsize=(16, 9))
-        plt.grid(axis='y', linestyle='-', alpha=0.2)
-        plt.plot(range(len(demand_dates)), occ_preds, color=PRIMARY, marker='o', linewidth=4, label='Total Bed Occupancy')
-        for i, v in enumerate(occ_preds):
-            plt.text(i, v + 1, f"{v}", ha='center', va='bottom', fontweight='bold', color=PRIMARY)
-        plt.axhline(y=80, color=ACCENT, linestyle='--', label='Capacity Limit (80)')
-        plt.title('Forecasted Total Hospital Bed Occupancy', fontweight='bold', fontsize=16)
-        plt.xticks(range(len(demand_dates)), [d.strftime('%Y-%m-%d') for d in demand_dates], rotation=15)
-        plt.ylim(0, 100)
-        plt.savefig(os.path.join(output_dir, "occupancychart.png"), dpi=150)
-        plt.close()
-
-        # CHART 3: Predicted Admissions
-        plt.figure(figsize=(16, 9))
-        plt.plot(range(len(demand_dates)), new_admissions, color=SECONDARY, marker='o', linewidth=4)
-        for i, v in enumerate(new_admissions):
-            plt.text(i, v + 0.5, f"{v}", ha='center', fontweight='bold', color=SECONDARY)
-        plt.title('Predicted New Patient Admissions (7-Day Forecast)', fontweight='bold', fontsize=16)
-        plt.xticks(range(len(demand_dates)), [d.strftime('%Y-%m-%d') for d in demand_dates], rotation=15)
-        plt.savefig(os.path.join(output_dir, "demandchart.png"), dpi=150)
-        plt.close()
-        
-        print("Charts generated successfully.")
-    except Exception as e:
-        print(f"Chart Generation Error: {e}")
-
-    return mae_val
-
-if __name__ == "__main__":
-    print("Hospital Prediction Engine Started...")
-    run_pipeline()
